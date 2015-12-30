@@ -113,10 +113,10 @@ def add_group_to_a_new_trust(request, trust_name, group_name):
 
 ```python
 from trusts.decorators import permission_required
-from app import Xyz
+from app.models import Xyz
 
 def get_xyz(request, user_id, xyz_id):
-  return Xyz.objects.get(xyz_id)
+  return Xyz.objects.get(pk=xyz_id)
 
 @permission_required('can_edit_xyz', obj_func=get_xyz)
 def edit_xyz_view(request, user_id, xyz_id):
