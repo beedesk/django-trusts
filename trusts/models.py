@@ -32,13 +32,13 @@ class TrustManager(models.Manager):
 
 class Trust(models.Model):
     id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=40, default='', verbose_name='Title',
+                null=False, blank=False)
     settlor = models.ForeignKey(User, null=False, blank=False)
-    ''' TODO -- Support trustees, similar to user_permissions in PermissionMixin
-    trustees = models.ManyToManyField(Permission,
+    trustees = models.ManyToManyField(User,
             related_name="trusts", blank=True, verbose_name=_('trustees'),
             help_text=_('Specific trustees for this trust.')
     )
-    '''
     groups = models.ManyToManyField(Group,
             related_name='trusts', blank=True, verbose_name=_('groups'),
             help_text=_('The groups this trust grants permissions to. A user will',
@@ -47,9 +47,11 @@ class Trust(models.Model):
 
     objects = TrustManager()
 
+    class Meta:
+        unique_together = ('settlor', 'title')
+
     def __str__(self):
         return 'Trust (%s)' % (self.id)
-
 
 class ContentMixin(models.Model):
     trust = models.ForeignKey(Trust, null=False, blank=False)
@@ -60,7 +62,6 @@ class ContentMixin(models.Model):
     def __init__(self, *args, **kwargs):
         super(ContentMixin, self).__init__(*args, **kwargs)
         Trust.objects.register_content(self.__class__)
-
 
 class Junction(models.Model):
     class Meta:

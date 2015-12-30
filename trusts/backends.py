@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from django.db.models import Q, QuerySet
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Permission, Group
@@ -22,9 +23,7 @@ class TrustModelBackendMixin(object):
         if not Trust.objects.is_content(obj):
             return set()
 
-        perm = Permission.objects.filter(group__trusts=obj.trust, group__user=user_obj)
-        return perm
-
+        return Permission.objects.filter(group__trusts=obj.trust, group__user=user_obj)
 
     def get_all_permissions(self, user_obj, obj=None):
         if user_obj.is_anonymous() or obj is None:
@@ -39,12 +38,13 @@ class TrustModelBackendMixin(object):
         perm_cache = getattr(user_obj, '_trust_perm_cache')
 
         if trust.pk not in perm_cache:
-            # TODO -- Support Trust.trustees
-            trust_perm = self.get_group_permissions(user_obj, obj)
+            trust_perm = Permission.objects.filter(
+                Q(group__trusts=obj.trust, group__user=user_obj) |
+                Q(user=user_obj, user__trusts=obj.trust)
+            )
+
             perm_cache[trust.pk] = trust_perm
         return perm_cache[trust.pk]
-
-        # return self.get_group_permissions(user_obj, obj)
 
 
 class TrustModelBackend(TrustModelBackendMixin, ModelBackend):

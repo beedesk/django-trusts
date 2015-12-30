@@ -86,11 +86,17 @@ class ContentMixinTestCase(TestCase):
         self.group = Group(name="Test Group")
         self.group.save()
 
+        self.content = self.model()
+        self.content.trust = self.trust
+        self.content.save()
+
     def delete_test_fixtures(self):
         self.trust.delete()
         self.trust1.delete()
 
         self.group.delete()
+
+        self.content.delete()
 
     def setUp(self):
         super(ContentMixinTestCase ,self).setUp()
@@ -131,10 +137,6 @@ class ContentMixinTestCase(TestCase):
         self.assertIsNone(trust)
 
     def test_no_permission(self):
-        self.content = self.model()
-        self.content.trust = self.trust
-        self.content.save()
-
         had = self.user.has_perm(self.perm_change, self.content)
         self.assertFalse(had)
 
@@ -168,6 +170,22 @@ class ContentMixinTestCase(TestCase):
         self.user = User._default_manager.get(pk=self.user.pk)
 
         self.trust.groups.add(self.group)
+
+        had = self.user.has_perm(self.perm_change, self.content)
+        self.assertTrue(had)
+
+    def test_has_trust(self):
+        had = self.user.has_perm(self.perm_change, self.content)
+        self.assertFalse(had)
+
+        trust = Trust(settlor=self.user, title='Test trusts')
+        trust.save()
+
+        self.user.user_permissions.add(self.perm_change)
+        self.trust.trustees.add(self.user)
+
+        # reloading user to purge the _trust_perm_cache
+        self.user = User._default_manager.get(pk=self.user.pk)
 
         had = self.user.has_perm(self.perm_change, self.content)
         self.assertTrue(had)

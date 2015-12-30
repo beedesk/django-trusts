@@ -16,15 +16,9 @@ A `trust` is a relationship whereby content access is permitted by the creator [
 ### Usages
 
 #####  Installation
-Run this command from the command prompt:
+1. Put `django-trusts` in PYTHONPATH.
 
-```bash
->>> python setup.py install
-```
-
-or put it in PYTHONPATH.
-
-Replace `AUTHENTICATION_BACKENDS` in `settings.py`
+2. Replace `AUTHENTICATION_BACKENDS` in `settings.py`
 
 ```python
 AUTHENTICATION_BACKENDS = (
@@ -85,11 +79,8 @@ def add_user_to_a_new_trust(request, name):
   trust = Trust(settlor=request.user, name=trust_name)
   trust.save()
 
-  tup = TrustUserPermission(user=request.user, permission=perm_change)
-  tup.save()
+  user.user_permissions.add(perm_change)
 
-  trust.trustees.add(tup)
-  
 def add_group_to_a_new_trust(request, trust_name, group_name):
   # get perm by name
   perm_change = Permission.objects.get_by_natural_key('change_xyz', 'app', 'xyz')
