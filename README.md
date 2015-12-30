@@ -1,6 +1,6 @@
 # Django Trusts
 
-##### Authorization add-on for multiple organizations and per object permission settings for Django projects
+##### Django authorization add-on for multiple organizations and per object permission settings
 
 ### Introduction 
 `django-trusts` strives to be a **minimal** add-on to Django's (>= 1.7) builtin<sup>[1](#footnote1)</sup> authorization implementation. It adds a single concept, `trust`, to enable maintainable per-object permission settings for a django project that hosts users of multiple organizations<sup>[2](#footnote2)</sup> with a single user namespace.
