@@ -84,10 +84,11 @@ def add_user_to_a_new_trust(request, name):
 
   trust = Trust(settlor=request.user, name=trust_name)
   trust.save()
-  trust.trustees.add(
 
   tup = TrustUserPermission(user=request.user, permission=perm_change)
   tup.save()
+
+  trust.trustees.add(tup)
   
 def add_group_to_a_new_trust(request, trust_name, group_name):
   # get perm by name
