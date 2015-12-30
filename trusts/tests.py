@@ -76,6 +76,11 @@ class ContentMixinTestCase(TestCase):
         self.user.delete()
         self.user1.delete()
 
+    def reload_test_users(self):
+        # reloading user to purge the _trust_perm_cache
+        self.user = User._default_manager.get(pk=self.user.pk)
+        self.user1 = User._default_manager.get(pk=self.user1.pk)
+
     def create_test_fixtures(self):
         self.trust = Trust(settlor=self.user)
         self.trust.save()
@@ -112,7 +117,7 @@ class ContentMixinTestCase(TestCase):
 
         for codename in ['change', 'add', 'delete']:
             setattr(self, 'perm_%s' % codename,
-                Permission.objects.get_by_natural_key('change_%s' % self.model_name, self.app_label, self.model_name)
+                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
             )
 
     def tearDown(self):
@@ -143,8 +148,7 @@ class ContentMixinTestCase(TestCase):
     def test_user_not_in_group_has_no_trust(self):
         self.test_no_permission()
 
-        # reloading user to purge the _trust_perm_cache
-        self.user = User._default_manager.get(pk=self.user.pk)
+        self.reload_test_users()
 
         self.perm_change.group_set.add(self.group)
         self.perm_change.save()
@@ -155,8 +159,7 @@ class ContentMixinTestCase(TestCase):
     def test_user_in_group_has_no_trust(self):
         self.test_user_not_in_group_has_no_trust()
 
-        # reloading user to purge the _trust_perm_cache
-        self.user = User._default_manager.get(pk=self.user.pk)
+        self.reload_test_users()
 
         self.user.groups.add(self.group)
 
@@ -166,26 +169,47 @@ class ContentMixinTestCase(TestCase):
     def test_user_in_group_has_trust(self):
         self.test_user_in_group_has_no_trust()
 
-        # reloading user to purge the _trust_perm_cache
-        self.user = User._default_manager.get(pk=self.user.pk)
+        self.reload_test_users()
 
         self.trust.groups.add(self.group)
 
         had = self.user.has_perm(self.perm_change, self.content)
         self.assertTrue(had)
 
+        had = self.user.has_perm(self.perm_add, self.content)
+        self.assertFalse(had)
+
     def test_has_trust(self):
         had = self.user.has_perm(self.perm_change, self.content)
+        self.assertFalse(had)
+        had = self.user.has_perm(self.perm_add, self.content)
         self.assertFalse(had)
 
         trust = Trust(settlor=self.user, title='Test trusts')
         trust.save()
 
+        self.reload_test_users()
+        had = self.user.has_perm(self.perm_change, self.content)
+        self.assertFalse(had)
+
         self.user.user_permissions.add(self.perm_change)
+
+        self.reload_test_users()
+        had = self.user.has_perm(self.perm_change, self.content)
+        self.assertFalse(had)
+
         self.trust.trustees.add(self.user)
 
-        # reloading user to purge the _trust_perm_cache
-        self.user = User._default_manager.get(pk=self.user.pk)
-
+        self.reload_test_users()
         had = self.user.has_perm(self.perm_change, self.content)
         self.assertTrue(had)
+
+        had = self.user.has_perm(self.perm_add, self.content)
+        self.assertFalse(had)
+
+        content1 = self.model()
+        content1.trust = self.trust1
+        content1.save()
+
+        had = self.user.has_perm(self.perm_change, content1)
+        self.assertFalse(had)
