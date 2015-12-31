@@ -19,24 +19,18 @@ from django.contrib.contenttypes.management import update_all_contenttypes, upda
 from django.test.testcases import TestCase
 from django.test.client import MULTIPART_CONTENT, Client
 
-from trusts.models import Trust, TrustManager, ContentMixin
+from trusts.models import Trust, TrustManager, ContentMixin, Junction
 from trusts.backends import TrustModelBackend
 
-class ContentMixinTestCase(TestCase):
+
+class RuntimeModel(object):
     """
     Base class for tests of model mixins. To use, subclass and specify
     the mixin class variable. A model using the mixin will be made
     available in self.model.
     """
 
-    mixin = ContentMixin
-
-    def mock_mixin_model(self):
-        # Create a dummy model which extends the mixin
-        self.model = ModelBase('TestModel' + self.mixin.__name__, (self.mixin,),
-            {'__module__': self.mixin.__module__})
-        self.model.id = models.AutoField(primary_key=True)
-
+    def create_test_model(self):
         # Create the schema for our test model
         self._style = no_style()
         sql, _ = connection.creation.sql_create_model(self.model, self._style)
@@ -45,11 +39,11 @@ class ContentMixinTestCase(TestCase):
             for statement in sql:
                 c.execute(statement)
 
-        app_config = apps.get_app_config(self.mixin._meta.app_label)
+        app_config = apps.get_app_config(self.model._meta.app_label)
         update_contenttypes(app_config, verbosity=1, interactive=False)
         create_permissions(app_config, verbosity=1, interactive=False)
 
-    def delete_mixin_model(self):
+    def destroy_test_model(self):
         # Delete the schema for the test model
         sql = connection.creation.sql_destroy_model(self.model, (), self._style)
 
@@ -57,6 +51,8 @@ class ContentMixinTestCase(TestCase):
             for statement in sql:
                 c.execute(statement)
 
+
+class TrustTestMixin(object):
     def create_test_users(self):
         # Create a user.
         self.username = 'daniel'
@@ -91,22 +87,20 @@ class ContentMixinTestCase(TestCase):
         self.group = Group(name="Test Group")
         self.group.save()
 
-        self.content = self.model()
-        self.content.trust = self.trust
-        self.content.save()
+        self.content = self.create_content(self.trust)
 
     def delete_test_fixtures(self):
+        self.delete_content()
+
         self.trust.delete()
         self.trust1.delete()
 
         self.group.delete()
 
-        self.content.delete()
-
     def setUp(self):
-        super(ContentMixinTestCase ,self).setUp()
+        super(TrustTestMixin, self).setUp()
 
-        self.mock_mixin_model()
+        self.prepare_test_model()
 
         self.create_test_users()
 
@@ -121,13 +115,13 @@ class ContentMixinTestCase(TestCase):
             )
 
     def tearDown(self):
-        super(ContentMixinTestCase ,self).tearDown()
+        super(TrustTestMixin, self).tearDown()
 
         self.delete_test_fixtures()
 
         self.delete_test_users()
 
-        self.delete_mixin_model()
+        self.unprepare_test_model()
 
     def assertIsIterable(self, obj, msg='Not an iterable'):
         return self.assertTrue(hasattr(obj, '__iter__'))
@@ -207,9 +201,59 @@ class ContentMixinTestCase(TestCase):
         had = self.user.has_perm(self.perm_add, self.content)
         self.assertFalse(had)
 
-        content1 = self.model()
-        content1.trust = self.trust1
-        content1.save()
+        self.content1 = self.create_content(self.trust1)
 
-        had = self.user.has_perm(self.perm_change, content1)
+        had = self.user.has_perm(self.perm_change, self.content1)
         self.assertFalse(had)
+
+
+class ContentMixinTrustTestCase(TrustTestMixin, RuntimeModel, TestCase):
+    mixin = ContentMixin
+
+    def prepare_test_model(self):
+        # Create a dummy model which extends the mixin
+        self.model = ModelBase('TestModel' + self.mixin.__name__, (self.mixin,),
+            {'__module__': self.mixin.__module__})
+        self.model.id = models.AutoField(primary_key=True)
+
+        self.create_test_model()
+
+        Trust.objects.register_content(self.model)
+
+    def unprepare_test_model(self):
+        self.destroy_test_model()
+
+
+    def create_content(self, trust):
+        content = self.model(trust=trust)
+        content.save()
+
+        return content
+
+    def delete_content(self):
+        self.content.delete()
+
+
+class JunctionTrustTestCase(TrustTestMixin, TestCase):
+    class GroupJunction(Junction):
+        content = models.ForeignKey(Group, unique=True, null=False, blank=False)
+
+    def prepare_test_model(self):
+        self.model = self.GroupJunction
+        Trust.objects.register_junction(Group, self.model)
+
+    def unprepare_test_model(self):
+        pass
+
+    def create_content(self, trust):
+        import uuid
+
+        content = Group(name=str(uuid.uuid4()))
+        content.save()
+        junction = self.model(content=content, trust=trust)
+        junction.save()
+
+        return content
+
+    def delete_content(self):
+        pass

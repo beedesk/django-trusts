@@ -39,8 +39,8 @@ class TrustModelBackendMixin(object):
 
         if trust.pk not in perm_cache:
             trust_perm = Permission.objects.filter(
-                Q(group__trusts=obj.trust, group__user=user_obj) |
-                Q(user=user_obj, user__trusts=obj.trust)
+                Q(group__trusts=trust, group__user=user_obj) |
+                Q(user=user_obj, user__trusts=trust)
             )
 
             perm_cache[trust.pk] = trust_perm

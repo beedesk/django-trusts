@@ -7,7 +7,7 @@ from django.utils.translation import ugettext_lazy as _
 
 class TrustManager(models.Manager):
     contents = set()
-    junctions = set()
+    junctions = dict()
 
     def is_content(self, obj):
         klass = obj.__class__
@@ -21,13 +21,18 @@ class TrustManager(models.Manager):
         klass = obj.__class__
         if klass in self.contents and hasattr(obj, 'trust'):
             return getattr(obj, 'trust')
+        if klass in self.junctions:
+            junction_klass = self.junctions[klass]
+            junction = junction_klass.objects.filter(content=obj).select_related('trust').first()
+            if junction is not None:
+                return junction.trust
         return None
 
     def register_content(self, klass):
         self.contents.add(klass)
 
-    def register_junction(self, klass):
-        self.junctions.add(klass)
+    def register_junction(self, content_klass, junction_klass):
+        self.junctions[content_klass] = junction_klass
 
 
 class Trust(models.Model):
@@ -51,7 +56,7 @@ class Trust(models.Model):
         unique_together = ('settlor', 'title')
 
     def __str__(self):
-        return 'Trust (%s)' % (self.id)
+        return 'Trust[%s]: "%s" of "%s"' % (self.id, self.title, self.settlor)
 
 class ContentMixin(models.Model):
     trust = models.ForeignKey(Trust, null=False, blank=False)
@@ -59,17 +64,9 @@ class ContentMixin(models.Model):
     class Meta:
         abstract = True
 
-    def __init__(self, *args, **kwargs):
-        super(ContentMixin, self).__init__(*args, **kwargs)
-        Trust.objects.register_content(self.__class__)
 
 class Junction(models.Model):
+    trust = models.ForeignKey(Trust, null=False, blank=False)
+
     class Meta:
         abstract = True
-
-    def __init__(self, *args, **kwargs):
-        if not self.hasattr('trust'):
-            raise 'Expect `trust` ForeignKey field.'
-
-        super(Junction, self).__init__(*args, **kwargs)
-        manager.register_junction(self.__class__)
