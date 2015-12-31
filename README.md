@@ -11,6 +11,11 @@ A `trust` is a relationship whereby content access is permitted by the creator [
 
 `django-trusts` supports Django's builtins User models `has_perms()` / `has_perms()` and does not provides any in-addition.
 
+
+<sup id="footnote1">[1] See, [Django Object Permissions](https://github.com/djangoadvent/djangoadvent-articles/blob/master/1.2/06_object-permissions.rst)</sup>
+
+<sup id="footnote2">[2] Even `django-trusts` is incepted to support multiple organizations in a single project, it does not define or restrict oraganization model design. One natural approach is to model an organization as a special user. With this arrangment, an organization can be the settlor of trusts. Alternative approach is to create another model for organization. With this arrangment, the settler of trusts can simple be the creating user and one might or might not have all permissions of organization's content.</sup>
+
 ---
 
 ### Usages
@@ -139,9 +144,3 @@ def delete_xyz_view(request, user_id, xyz_id):
   # ...
   pass
 ```
-
----
-
-<sup id="footnote1">[1] See, [Django Object Permissions](https://github.com/djangoadvent/djangoadvent-articles/blob/master/1.2/06_object-permissions.rst)</sup>
-
-<sup id="footnote2">[2] Even `django-trusts` is incepted to support multiple organizations in a single project, it does not define or restrict oraganization model design. One natural approach is to model an organization as a special user. With this arrangment, an organization can be the settlor of trusts. Alternative approach is to create another model for organization. With this arrangment, the settler of trusts can simple be the creating user and one might or might not have all permissions of organization's content.</sup>
