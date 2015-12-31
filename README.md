@@ -71,7 +71,7 @@ class GroupJunction(Junction, models.Model):
 Trust.objects.register_junction(Group, GroupJunction)
 ```
 
-#### Permission Assigments
+##### Permission Assigments
 
 ```python
 from django.contrib.auth.models import User, Group, Permission
@@ -115,7 +115,7 @@ def grant_permission_to_a_specific_group(request, group_name, trust_id):
   junction.save()
 ```
 
-#### Permissions Checking
+##### Permissions Checking
 
 ```python
 def check_permission_to_a_specific_receipt(request, receipt_id):
@@ -127,7 +127,7 @@ def check_permission_to_a_specific_group(request, group_id):
   return request.user.has_perm(perm_change, Group.objects.get(id=group_id)
 ```
 
-#### Use decorators (not implemented)
+##### Use decorators (not implemented)
 
 ```python
 from trusts.decorators import permission_required
