@@ -113,7 +113,11 @@ def grant_permission_to_a_specific_group(request, group_name, trust_id):
 
   junction = GroupJunction(trust=trust, content=group)
   junction.save()
+```
 
+#### Permissions Checking
+
+```python
 def check_permission_to_a_specific_receipt(request, receipt_id):
   perm_change = Permission.objects.get_by_natural_key('change_receipt', 'app', 'receipt')
   return request.user.has_perm(perm_change, Receipt.objects.get(id=receipt_id)
@@ -121,9 +125,7 @@ def check_permission_to_a_specific_receipt(request, receipt_id):
 def check_permission_to_a_specific_group(request, group_id):
   perm_change = Permission.objects.get_by_natural_key('change_group', 'app', 'group')
   return request.user.has_perm(perm_change, Group.objects.get(id=group_id)
-
 ```
-
 
 #### Use decorators (not implemented)
 
