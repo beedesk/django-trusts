@@ -5,12 +5,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Permission, Group
 
-from trusts.models import Trust, TrustManager
+from trusts.models import Trust
 
 
 class TrustModelBackendMixin(object):
-    manager = TrustManager()
-
     def get_group_permissions(self, user_obj, obj=None):
         """
         Returns a set of permission strings that this user has through his/her
