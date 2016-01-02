@@ -62,6 +62,7 @@ class ContentMixin(models.Model):
     trust = models.ForeignKey(Trust, null=False, blank=False)
 
     class Meta:
+        default_permissions = ('add', 'change', 'delete', 'read')
         abstract = True
 
 
