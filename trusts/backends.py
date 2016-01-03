@@ -27,22 +27,37 @@ class TrustModelBackendMixin(object):
         if user_obj.is_anonymous() or obj is None:
             return super(TrustModelBackendMixin, self).get_all_permissions(user_obj, obj)
 
-        trust = Trust.objects.get_by_content(obj)
-        if trust is None:
+        trusts = Trust.objects.get_by_content(obj)
+
+        if trusts is None:
             return set()
+
+        if not hasattr(trusts, '__iter__'):
+            trusts = [trusts]
 
         if not hasattr(user_obj, '_trust_perm_cache'):
             setattr(user_obj, '_trust_perm_cache', dict())
         perm_cache = getattr(user_obj, '_trust_perm_cache')
 
-        if trust.pk not in perm_cache:
-            trust_perm = Permission.objects.filter(
-                Q(group__trusts=trust, group__user=user_obj) |
-                Q(user=user_obj, user__trusts=trust)
-            )
+        all_perms = []
+        for trust in trusts:
+            if isinstance(trust, Trust):
+                pk = trust.pk
+            else:
+                pk = trust['trust']
+            if pk not in perm_cache:
+                trust_perm = set(Permission.objects.filter(
+                    Q(group__trusts=pk, group__user=user_obj) |
+                    Q(user__trusts=pk, user=user_obj)
+                ).order_by('group__trusts', 'user__trusts'))
 
-            perm_cache[trust.pk] = trust_perm
-        return perm_cache[trust.pk]
+                perm_cache[pk] = trust_perm
+            else:
+                trust_perm = perm_cache[pk]
+
+            all_perms.append(trust_perm)
+
+        return set.intersection(*all_perms)
 
 
 class TrustModelBackend(TrustModelBackendMixin, ModelBackend):

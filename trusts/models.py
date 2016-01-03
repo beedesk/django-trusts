@@ -10,22 +10,44 @@ class TrustManager(models.Manager):
     junctions = dict()
 
     def is_content(self, obj):
-        klass = obj.__class__
-        if klass in self.contents and hasattr(obj, 'trust'):
+        if isinstance(obj, models.QuerySet):
+            klass = obj.model
+            is_qs = True
+        else:
+            klass = obj.__class__
+            is_qs = False
+
+        if klass in self.contents:
+            if is_qs or hasattr(obj, 'trust'):
+                return True
+        elif klass in self.junctions:
             return True
-        if klass in self.junctions and hasattr(obj, 'trust'):
-            return True
+
         return False
 
     def get_by_content(self, obj):
-        klass = obj.__class__
-        if klass in self.contents and hasattr(obj, 'trust'):
-            return getattr(obj, 'trust')
-        if klass in self.junctions:
+        if isinstance(obj, models.QuerySet):
+            klass = obj.model
+            is_qs = True
+        else:
+            klass = obj.__class__
+            is_qs = False
+
+        if klass in self.contents:
+            if is_qs:
+                return obj.values('trust').distinct()
+            else:
+                if hasattr(obj, 'trust'):
+                    return getattr(obj, 'trust')
+        elif klass in self.junctions:
             junction_klass = self.junctions[klass]
-            junction = junction_klass.objects.filter(content=obj).select_related('trust').first()
-            if junction is not None:
-                return junction.trust
+            if is_qs:
+                return junction_klass.objects.filter(content=obj).values('trust').distinct()
+            else:
+                junction = junction_klass.objects.filter(content=obj).select_related('trust').first()
+
+                if junction is not None:
+                    return getattr(junction, 'trust')
         return None
 
     def register_content(self, klass):
@@ -58,8 +80,9 @@ class Trust(models.Model):
     def __str__(self):
         return 'Trust[%s]: "%s" of "%s"' % (self.id, self.title, self.settlor)
 
+
 class ContentMixin(models.Model):
-    trust = models.ForeignKey(Trust, null=False, blank=False)
+    trust = models.ForeignKey('trusts.Trust', related_name='content', null=False, blank=False)
 
     class Meta:
         default_permissions = ('add', 'change', 'delete', 'read')
@@ -67,7 +90,7 @@ class ContentMixin(models.Model):
 
 
 class Junction(models.Model):
-    trust = models.ForeignKey(Trust, null=False, blank=False)
+    trust = models.ForeignKey('trusts.Trust', null=False, blank=False)
 
     class Meta:
         abstract = True

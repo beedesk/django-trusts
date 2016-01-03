@@ -198,12 +198,39 @@ class TrustTestMixin(object):
         had = self.user.has_perm(self.perm_change, self.content)
         self.assertTrue(had)
 
+    def test_has_trust_disallow_no_trust_content(self):
+        self.test_has_trust()
+
+        self.content1 = self.create_content(self.trust1)
+        had = self.user.has_perm(self.perm_change, self.content1)
+        self.assertFalse(had)
+
+    def test_has_trust_disallow_no_trust_perm(self):
+        self.test_has_trust()
+
         had = self.user.has_perm(self.perm_add, self.content)
         self.assertFalse(had)
 
-        self.content1 = self.create_content(self.trust1)
+    def test_has_trust_queryset(self):
+        self.test_has_trust()
 
-        had = self.user.has_perm(self.perm_change, self.content1)
+        self.content1 = self.create_content(self.trust)
+
+        self.reload_test_users()
+        qs = self.model.objects.filter(pk__in=[self.content.pk, self.content1.pk])
+        had = self.user.has_perm(self.perm_change, qs)
+        self.assertTrue(had)
+
+    def test_mixed_trust_queryset(self):
+        self.test_has_trust()
+
+        self.content1 = self.create_content(self.trust1)
+        self.content2 = self.create_content(self.trust)
+
+        self.reload_test_users()
+        qs = self.model.objects.all()
+        had = self.user.has_perm(self.perm_change, qs)
+
         self.assertFalse(had)
 
 
@@ -239,8 +266,9 @@ class JunctionTrustTestCase(TrustTestMixin, TestCase):
         content = models.ForeignKey(Group, unique=True, null=False, blank=False)
 
     def prepare_test_model(self):
-        self.model = self.GroupJunction
-        Trust.objects.register_junction(Group, self.model)
+        self.model = Group
+        self.junction = self.GroupJunction
+        Trust.objects.register_junction(self.model, self.junction)
 
     def unprepare_test_model(self):
         pass
@@ -248,9 +276,9 @@ class JunctionTrustTestCase(TrustTestMixin, TestCase):
     def create_content(self, trust):
         import uuid
 
-        content = Group(name=str(uuid.uuid4()))
+        content = self.model(name=str(uuid.uuid4()))
         content.save()
-        junction = self.model(content=content, trust=trust)
+        junction = self.junction(content=content, trust=trust)
         junction.save()
 
         return content
