@@ -9,6 +9,12 @@ from trusts.models import Trust
 
 
 class TrustModelBackendMixin(object):
+    @staticmethod
+    def _get_perm_code(perm):
+        return '%s.%s' % (
+            perm.content_type.app_label, perm.codename
+        )
+
     def get_group_permissions(self, user_obj, obj=None):
         """
         Returns a set of permission strings that this user has through his/her
@@ -46,10 +52,12 @@ class TrustModelBackendMixin(object):
             else:
                 pk = trust['trust']
             if pk not in perm_cache:
-                trust_perm = set(Permission.objects.filter(
-                    Q(group__trusts=pk, group__user=user_obj) |
-                    Q(user__trusts=pk, user=user_obj)
-                ).order_by('group__trusts', 'user__trusts'))
+                trust_perm = set([self._get_perm_code(p) for p in
+                    Permission.objects.filter(
+                        Q(group__trusts=pk, group__user=user_obj) |
+                        Q(user__trusts=pk, user=user_obj)
+                    ).order_by('group__trusts', 'user__trusts')
+                ])
 
                 perm_cache[pk] = trust_perm
             else:

@@ -1,5 +1,6 @@
 import os
 import json
+
 import unittest
 import settings
 from decimal import Decimal
@@ -97,6 +98,23 @@ class TrustTestMixin(object):
 
         self.group.delete()
 
+    def set_perms(self):
+        for codename in ['change', 'add', 'delete']:
+            setattr(self, 'perm_%s' % codename,
+                '%s.%s_%s' % (self.app_label, codename, self.model_name)
+            )
+
+    def get_perm_code(self, perm):
+        return '%s.%s' % (
+            perm.content_type.app_label, perm.codename
+         )
+
+    def set_perms(self):
+        for codename in ['change', 'add', 'delete']:
+            setattr(self, 'perm_%s' % codename,
+                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
+            )
+
     def setUp(self):
         super(TrustTestMixin, self).setUp()
 
@@ -109,10 +127,7 @@ class TrustTestMixin(object):
         self.app_label = self.model._meta.app_label
         self.model_name = self.model._meta.model_name
 
-        for codename in ['change', 'add', 'delete']:
-            setattr(self, 'perm_%s' % codename,
-                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
-            )
+        self.set_perms()
 
     def tearDown(self):
         super(TrustTestMixin, self).tearDown()
@@ -136,7 +151,7 @@ class TrustTestMixin(object):
         self.assertIsNone(trust)
 
     def test_no_permission(self):
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
     def test_user_not_in_group_has_no_trust(self):
@@ -147,7 +162,7 @@ class TrustTestMixin(object):
         self.perm_change.group_set.add(self.group)
         self.perm_change.save()
 
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
     def test_user_in_group_has_no_trust(self):
@@ -157,7 +172,7 @@ class TrustTestMixin(object):
 
         self.user.groups.add(self.group)
 
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
     def test_user_in_group_has_trust(self):
@@ -167,42 +182,42 @@ class TrustTestMixin(object):
 
         self.trust.groups.add(self.group)
 
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
 
-        had = self.user.has_perm(self.perm_add, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_add), self.content)
         self.assertFalse(had)
 
     def test_has_trust(self):
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
-        had = self.user.has_perm(self.perm_add, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_add), self.content)
         self.assertFalse(had)
 
         trust = Trust(settlor=self.user, title='Test trusts')
         trust.save()
 
         self.reload_test_users()
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
         self.user.user_permissions.add(self.perm_change)
 
         self.reload_test_users()
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
         self.trust.trustees.add(self.user)
 
         self.reload_test_users()
-        had = self.user.has_perm(self.perm_change, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
 
     def test_has_trust_disallow_no_trust_content(self):
         self.test_has_trust()
 
         self.content1 = self.create_content(self.trust1)
-        had = self.user.has_perm(self.perm_change, self.content1)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content1)
         self.assertFalse(had)
 
     def test_has_trust_disallow_no_trust_perm(self):
@@ -218,7 +233,7 @@ class TrustTestMixin(object):
 
         self.reload_test_users()
         qs = self.model.objects.filter(pk__in=[self.content.pk, self.content1.pk])
-        had = self.user.has_perm(self.perm_change, qs)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), qs)
         self.assertTrue(had)
 
     def test_mixed_trust_queryset(self):
@@ -229,7 +244,7 @@ class TrustTestMixin(object):
 
         self.reload_test_users()
         qs = self.model.objects.all()
-        had = self.user.has_perm(self.perm_change, qs)
+        had = self.user.has_perm(self.get_perm_code(self.perm_change), qs)
 
         self.assertFalse(had)
 
