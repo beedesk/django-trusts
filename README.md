@@ -136,7 +136,7 @@ def edit_xyz_view(request, user_id, xyz_id):
   pass
 
 @permission_required('can_read_xyz', model_obj=(Xyz, 'xyz_id'))
-def delete_xyz_view(request, user_id, xyz_id):
+def read_xyz_view(request, user_id, xyz_id):
   # ...
   pass
 ```
