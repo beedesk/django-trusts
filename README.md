@@ -59,10 +59,6 @@ from django.db import models
 from django.contrib.auth.models import Group
 from trusts.models import Junction
 
-# New Junction to existing model
-class ReceiptJunction(Junction, models.Model):
-    content = models.ForeignKey(Receipt, null=False, blank=False)
-
 # New Junction to model that is not under your control
 class GroupJunction(Junction, models.Model):
     # field name must be named as `content` and unique=True, null=False, blank=False
