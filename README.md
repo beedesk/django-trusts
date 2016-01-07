@@ -67,48 +67,51 @@ class GroupJunction(Junction, models.Model):
 Trust.objects.register_junction(Group, GroupJunction)
 ```
 
-##### Permission Assigments
+##### Permission Assignments
 
 ```python
 from django.contrib.auth.models import User, Group, Permission
 from trusts.models import Trust
 
-def add_user_to_a_new_trust(request, name):
-  perm_change = Permission.objects.get_by_natural_key('change_xyz', 'app', 'xyz')
+# Helper function
+def grant_user_permission_to_model(user, model_name, code='change', app='app'):
+    # Django's auth permission mechanism, nothing specific to `django-trust`
+    perm = Permission.objects.get_by_natural_key('change_%s' % model_name, app, model_name)
+    user.user_permissions.add(perm)
 
-  trust = Trust(settlor=request.user, name=trust_name)
-  trust.save()
+# Helper function
+def grant_user_group_permssion_to_model(user, group_name, model_name, code='change', app='app'):
+    # Django's auth permission mechanism, nothing specific to `django-trust`
 
-  user.user_permissions.add(perm_change)
+    # get perm by name
+    perm = Permission.objects.get_by_natural_key('change_%s' % model_name, app, model_name)
+    group = Group.objects.get(name=group_name)
 
-def add_group_to_a_new_trust(request, trust_name, group_name):
-  # get perm by name
-  perm_change = Permission.objects.get_by_natural_key('change_xyz', 'app', 'xyz')
+    # connect them
+    user.groups.add(group)
+    perm.group_set.add(group)
 
-  # get group
-  group = Group.objects.get(name=group_name)
+# View
+def create_receipt_object_for_user(request, title, details):
+    self.grant_user_permssion_to_model(request.user, 'receipt', code='change')
 
-  # new trust
-  trust = Trust(settlor=request.user, name=trust_name)
-  trust.save()
+    trust = Trust.objects.get_or_create_settlor_default(settlor=request.user)
+    content = Receipt(trust=trust, title=title, details=details)
+    content.save()
 
-  # connect them all
-  request.user.groups.add(group)
-  trust.groups.add(group)
-  perm_change.group_set.add(group)
+# View
+def give_user_change_permission_on_existing_group(request, user, group_name):
+    self.grant_user_permssion_to_model(request.user, group_name, code='change', app='auth')
+    
+    group = Group.objects.get(name=group_name)
+    junction = GroupJunction(trust=trust, content=group)
+    junction.save()
 
-def grant_permission_to_a_specific_receipt(request, receipt_id, trust_id):
-  trust = Trust.objects.get(id=trust_id)
-  receipt = Receipt.objects.get(id=receipt_id)
-  receipt.trust = trust
-  receipt.save()
-
-def grant_permission_to_a_specific_group(request, group_name, trust_id):
-  trust = Trust.objects.get(id=trust_id)
-  group = Group.objects.get(name=group_name)
-
-  junction = GroupJunction(trust=trust, content=group)
-  junction.save()
+# View
+def create_receipt_object_for_existing_group(request, group_name, title, details):
+    trust = Trust.objects.get_or_create_group_default(group__name=group_name)
+    content = Receipt(trust=trust, title=title, details=details)
+    content.save()
 ```
 
 ##### Permissions Checking
