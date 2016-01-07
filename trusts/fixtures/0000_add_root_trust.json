@@ -1,0 +1,10 @@
+[
+  {
+    "pk": 1,
+    "model": "trusts.trust",
+    "fields": {
+      "trust": 1,
+      "title": "In Trust We Trust"
+    }
+  }
+]

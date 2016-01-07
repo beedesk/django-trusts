@@ -93,7 +93,7 @@ def grant_user_group_permssion_to_model(user, group_name, model_name, code='chan
 
 # View
 def create_receipt_object_for_user(request, title, details):
-    self.grant_user_permssion_to_model(request.user, 'receipt', code='change')
+    grant_user_permssion_to_model(request.user, 'receipt', code='change')
 
     trust = Trust.objects.get_or_create_settlor_default(settlor=request.user)
     content = Receipt(trust=trust, title=title, details=details)
@@ -101,7 +101,7 @@ def create_receipt_object_for_user(request, title, details):
 
 # View
 def give_user_change_permission_on_existing_group(request, user, group_name):
-    self.grant_user_permssion_to_model(request.user, group_name, code='change', app='auth')
+    grant_user_permssion_to_model(request.user, group_name, code='change', app='auth')
     
     group = Group.objects.get(name=group_name)
     junction = GroupJunction(trust=trust, content=group)
@@ -109,7 +109,10 @@ def give_user_change_permission_on_existing_group(request, user, group_name):
 
 # View
 def create_receipt_object_for_existing_group(request, group_name, title, details):
-    trust = Trust.objects.get_or_create_group_default(group__name=group_name)
+    grant_user_group_permssion_to_model(user, group_name, 'receipt', code='change', app='app'):
+
+    group = Group.objects.get(name=group_name)
+    trust = Trust.objects.get_or_create_group_default(group=group)
     content = Receipt(trust=trust, title=title, details=details)
     content.save()
 ```

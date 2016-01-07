@@ -33,6 +33,8 @@ class TrustModelBackendMixin(object):
         if user_obj.is_anonymous() or obj is None:
             return super(TrustModelBackendMixin, self).get_all_permissions(user_obj, obj)
 
+        if not Trust.objects.is_content(obj):
+            return set()
         trusts = Trust.objects.get_by_content(obj)
 
         if trusts is None:
