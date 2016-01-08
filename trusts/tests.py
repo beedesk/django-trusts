@@ -89,6 +89,38 @@ class TrustTest(TestCase):
             codename='%s_%s' % ('read', ct.model)
         ))
 
+    def test_filter_by_user_perm(self):
+        self.trust1, created = Trust.objects.get_or_create_settlor_default(self.user)
+
+        self.trust2 = Trust(settlor=self.user, title='Title 0A', trust=Trust.objects.get_root())
+        self.trust2.save()
+        self.trust2.trustees.add(self.user)
+
+        self.trust3 = Trust(settlor=self.user, title='Title 0B', trust=Trust.objects.get_root())
+        self.trust3.save()
+
+        self.trust4 = Trust(settlor=self.user1, title='Title 1A', trust=Trust.objects.get_root())
+        self.trust4.save()
+        self.trust4.trustees.add(self.user)
+
+        self.trust5 = Trust(settlor=self.user1, title='Title 1B', trust=Trust.objects.get_root())
+        self.trust5.save()
+        self.group = Group(name='Group A')
+        self.group.save()
+        self.user.groups.add(self.group)
+        self.trust5.groups.add(self.group)
+
+        self.trust6 = Trust(settlor=self.user1, title='Title 1C', trust=Trust.objects.get_root())
+        self.trust6.save()
+
+        trusts = Trust.objects.filter_by_user_perm(self.user)
+        trust_pks = [t.pk for t in trusts]
+        self.assertEqual(trusts.count(), 4)
+        self.assertTrue(self.trust1.id in trust_pks)
+        self.assertTrue(self.trust2.id in trust_pks)
+        self.assertTrue(self.trust4.id in trust_pks)
+        self.assertTrue(self.trust5.id in trust_pks)
+
 
 class RuntimeModel(object):
     """
@@ -134,6 +166,8 @@ class TrustContentMixin(object):
     def delete_test_fixtures(self):
         # We need to delete those fixtures that has foreign key constraints on
         # the ModelBase() we created, otherwise we would fail at ModelBase() deletion
+
+        self.delete_contents()
 
         if hasattr(self, 'trust1') and self.trust1 is not None and self.trust.pk is not None:
             self.trust1.delete()
@@ -397,6 +431,8 @@ class JunctionTrustTestCase(TrustContentMixin, TestCase):
 
 
 class TrustTrustTestCase(TrustContentMixin, TestCase):
+    contents = []
+
     def prepare_test_model(self):
         self.model = Trust
 
@@ -407,7 +443,10 @@ class TrustTrustTestCase(TrustContentMixin, TestCase):
         content = Trust(title='Test Trust as Content', trust=trust)
         content.save()
 
+        self.contents.insert(0, content)
         return content
 
     def delete_contents(self):
-        pass
+        for c in self.contents:
+            if c.pk is not None:
+                c.delete()

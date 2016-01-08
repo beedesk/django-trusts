@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import User, Group, Permission
 from django.utils.translation import ugettext_lazy as _
 
@@ -8,7 +9,7 @@ class TrustManager(models.Manager):
     contents = set()
     junctions = dict()
 
-    def get_or_create_settlor_default(self, settlor, defaults=None, **kwargs):
+    def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
         if 'trust' in kwargs:
             raise TypeError('"%s" are invalid keyword arguments' % 'trust')
         if settlor is None:
@@ -21,28 +22,12 @@ class TrustManager(models.Manager):
 
         root_trust = self.get_root()
         try:
-            trust = self.get(settlor=settlor, title='')
+            trust = self.get(settlor=settlor, title='', **kwargs)
         except Trust.DoesNotExist:
-            trust = Trust(settlor=settlor, title='', trust=root_trust)
-            trust.save()
-            trust.trustees.add(settlor)
-            created = True
-
-        return trust, created
-
-    def get_or_create_group_default(self, group, defaults=None, **kwargs):
-        if 'trust' in kwargs:
-            raise TypeError('"%s" are invalid keyword arguments' % 'trust')
-        if group is None:
-            raise ValueError('"group" must has a value.')
-
-        created = False
-
-        root_trust = self.get_root()
-        try:
-            trust = self.get(groups__in=group, title='')
-        except Trust.DoesNotExist:
-            trust = Trust(settlor=settlor, title='', trust=root_trust)
+            params = {k: v for k, v in kwargs.items() if '__' not in k}
+            params.update(defaults)
+            params.update({'settlor': settlor, 'title': '', 'trust': root_trust})
+            trust = self.model(**params)
             trust.save()
             trust.trustees.add(settlor)
             created = True
@@ -76,6 +61,12 @@ class TrustManager(models.Manager):
                 if junction is not None:
                     return getattr(junction, 'trust')
         return None
+
+    def filter_by_user_perm(self, user, **kwargs):
+        if 'group__user' in kwargs:
+            raise TypeError('"%s" are invalid keyword arguments' % 'group__user')
+
+        return self.filter(Q(groups__user=user) | Q(trustees=user), **kwargs)
 
     def is_content(self, obj):
         if isinstance(obj, models.QuerySet):
