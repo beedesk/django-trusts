@@ -12,6 +12,7 @@ from django.apps import apps
 from django.db import models, connection, IntegrityError
 from django.db.models import F
 from django.db.models.base import ModelBase
+from django.core.exceptions import ValidationError
 from django.core.management.color import no_style
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.management import create_permissions
@@ -120,6 +121,20 @@ class TrustTest(TestCase):
         self.assertTrue(self.trust2.id in trust_pks)
         self.assertTrue(self.trust4.id in trust_pks)
         self.assertTrue(self.trust5.id in trust_pks)
+
+    def test_change_trust(self):
+        self.trust1 = Trust(settlor=self.user, title='Title 0A', trust=Trust.objects.get_root())
+        self.trust1.save()
+
+        self.trust2 = Trust(settlor=self.user1, title='Title 1A', trust=Trust.objects.get_root())
+        self.trust2.save()
+
+        try:
+            self.trust2.trust = self.trust1
+            self.trust2.full_clean()
+            self.fail('Expected ValidationError not raised.')
+        except ValidationError as ve:
+            pass
 
 
 class RuntimeModel(object):
@@ -263,7 +278,7 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
-    def test_user_in_group_has_trust(self):
+    def test_user_in_group_has_perm(self):
         self.trust = Trust(settlor=self.user, trust=Trust.objects.get_root(), title='a title')
         self.trust.save()
         self.content = self.create_content(self.trust)
@@ -283,7 +298,7 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_add), self.content)
         self.assertFalse(had)
 
-    def test_has_trust(self):
+    def test_has_perm(self):
         self.trust = Trust(settlor=self.user, trust=Trust.objects.get_root())
         self.trust.save()
         self.content = self.create_content(self.trust)
@@ -315,15 +330,15 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
 
-    def test_has_trust_disallow_no_perm_content(self):
-        self.test_has_trust()
+    def test_has_perm_disallow_no_perm_content(self):
+        self.test_has_perm()
 
         self.content1 = self.create_content(self.trust1)
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content1)
         self.assertFalse(had)
 
-    def test_has_trust_disallow_no_perm_perm(self):
-        self.test_has_trust()
+    def test_has_perm_disallow_no_perm_perm(self):
+        self.test_has_perm()
 
         had = self.user.has_perm(self.perm_add, self.content)
         self.assertFalse(had)
@@ -341,8 +356,8 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_change), content)
         self.assertTrue(had)
 
-    def test_has_trust_queryset(self):
-        self.test_has_trust()
+    def test_has_perm_queryset(self):
+        self.test_has_perm()
 
         self.content1 = self.create_content(self.trust)
 
@@ -352,7 +367,7 @@ class TrustContentMixin(object):
         self.assertTrue(had)
 
     def test_mixed_trust_queryset(self):
-        self.test_has_trust()
+        self.test_has_perm()
 
         self.content1 = self.create_content(self.trust1)
         self.content2 = self.create_content(self.trust)

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django.db import models
 from django.db.models import Q
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User, Group, Permission
 from django.utils.translation import ugettext_lazy as _
 
@@ -91,7 +92,28 @@ class TrustManager(models.Manager):
         self.junctions[content_klass] = junction_klass
 
 
-class Trust(models.Model):
+class ReadonlyFieldsMixin(object):
+    def __init__(self, *args, **kwargs):
+        super(ReadonlyFieldsMixin, self).__init__(*args, **kwargs)
+
+        if hasattr(self, '_readonly_fields'):
+            self._state.init_fields = {
+                field: getattr(self, field) for field in self._readonly_fields
+                        if hasattr(self, field)
+            }
+
+    def clean(self):
+        super(ReadonlyFieldsMixin, self).clean()
+
+        if hasattr(self, '_readonly_fields') and hasattr(self._state, 'init_fields'):
+            for field in self._readonly_fields:
+                if field in self._state.init_fields:
+                    saved_value = self._state.init_fields[field]
+                    if saved_value != getattr(self, field):
+                        raise ValidationError('Field "%s" is readonly.' % 'trust')
+
+
+class Trust(ReadonlyFieldsMixin, models.Model):
     id = models.AutoField(primary_key=True)
     trust = models.ForeignKey('self', related_name='content', default=1, null=False, blank=False)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
@@ -105,6 +127,7 @@ class Trust(models.Model):
                 help_text=_('The groups this trust grants permissions to. A user will'
                             'get all permissions granted to each of his/her group.'),
     )
+    _readonly_fields = ('trust', 'settlor',)
 
     objects = TrustManager()
 
@@ -117,16 +140,18 @@ class Trust(models.Model):
         return 'Trust[%s]: "%s"' % (self.id, self.title)
 
 
-class ContentMixin(models.Model):
+class ContentMixin(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', related_name='content', null=False, blank=False)
+    _readonly_fields = ('trust',)
 
     class Meta:
         abstract = True
         default_permissions = ('add', 'change', 'delete', 'read')
 
 
-class Junction(models.Model):
+class Junction(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', null=False, blank=False)
+    _readonly_fields = ('trust',)
 
     class Meta:
         abstract = True
