@@ -5,16 +5,16 @@
 ### Introduction
 `django-trusts` is a add-on to Django's (>= 1.7) builtin<sup>[1](#footnote1)</sup> authorization. It strives to be a **minimal** implementation, adding only a single concept, `trust`, to enable maintainable per-object permission settings for a django project that hosts users of multiple organizations<sup>[2](#footnote2)</sup> with a single user namespace.
 
-A `trust` is a relationship whereby content access is permitted by the creator [`settlor`] to specific user(s) [`trustee`(s)] or `group`(s). Content can be an instance of a ContentMixin subclass, or of an existing model via a junction table. Access to multiple content can be permitted by a single `trust` for maintainable permssion settings. Django's builtin model, group, is supported and can be used to define reusuable permissions for a group of users.
+A `trust` is a relationship whereby content access is permitted by the creator [`settlor`] to specific user(s) [`trustee`(s)] or `group`(s). Content can be an instance of a ContentMixin subclass, or of an existing model via a junction table. Access to multiple content can be permitted by a single `trust` for maintainable permssion settings. Django's builtin model, `group`, is supported and can be used to define reusuable permissions for a `group` of `user`s.
 
-`django-trusts` also strives to be a **scalable** solution. Permissions checking is offloaded to the database by design, and the implementation minimizes database hits. Permissions are cached per `trust` for the lifecycle of request user. If a project's request lifecycle resolves most checked content to one or few `trusts`, which should be very typically the case, this design should be a winner in term of performance. Currently, permissions checking is done against an individual content. In the future, we would like to add permissions checking against a QuerySet of content.
+`django-trusts` also strives to be a **scalable** solution. Permissions checking is offloaded to the database by design, and the implementation minimizes database hits. Permissions are cached per `trust` for the lifecycle of `request user`. If a project's request lifecycle resolves most checked content to one or few `trusts`, which should be very typically the case, this design should be a winner in term of performance. Currently, permissions checking is done against an individual content. In the future, we would like to add permissions checking against a QuerySet of content.
 
 `django-trusts` supports Django's builtins User models `has_perms()` / `has_perms()` and does not provides any in-addition.
 
 
 <sup id="footnote1">[1] See, [Django Object Permissions](https://github.com/djangoadvent/djangoadvent-articles/blob/master/1.2/06_object-permissions.rst)</sup>
 
-<sup id="footnote2">[2] Even `django-trusts` is incepted to support multiple organizations in a single project, it does not define or restrict oraganization model design. One natural approach is to model an organization as a special user. With this arrangment, an organization can be the `settlor` of `trusts`. Alternative approach is to create another model for organization. With this arrangment, the settler of trusts can simple be the creating user and one might or might not have all permissions of organization's content.</sup>
+<sup id="footnote2">[2] Even `django-trusts` is incepted to support multiple organizations in a single project, it does not define or restrict oraganization model design. One natural approach is to model an organization as a special user. With this arrangment, an organization can be the `settlor` of `trusts`. Alternative approach is to create another model for organization. With this arrangment, the `settlor` of `trust`s can simple be the creating user and one might or might not have all permissions of organization's content.</sup>
 
 ---
 
@@ -79,6 +79,9 @@ def grant_user_permission_to_model(user, model_name, code='change', app='app'):
     perm = Permission.objects.get_by_natural_key('change_%s' % model_name, app, model_name)
     user.user_permissions.add(perm)
 
+    # user.has_perm('%s.change_%s' % (app, model_name)) ==> True
+    # user.has_perm('%s.change_%s' % (app, model_name), obj) ==> False
+
 # Helper function
 def grant_user_group_permssion_to_model(user, group_name, model_name, code='change', app='app'):
     # Django's auth permission mechanism, nothing specific to `django-trust`
@@ -91,6 +94,9 @@ def grant_user_group_permssion_to_model(user, group_name, model_name, code='chan
     user.groups.add(group)
     perm.group_set.add(group)
 
+    # user.has_perm('%s.change_%s' % (app, model_name)) ==> True
+    # user.has_perm('%s.change_%s' % (app, model_name), obj) ==> False
+
 # View
 def create_receipt_object_for_user(request, title, details):
     grant_user_permssion_to_model(request.user, 'receipt', code='change')
@@ -99,22 +105,17 @@ def create_receipt_object_for_user(request, title, details):
     content = Receipt(trust=trust, title=title, details=details)
     content.save()
 
+    # request.user.has_perm('app.change_receipt', content) ==> True
+
 # View
 def give_user_change_permission_on_existing_group(request, user, group_name):
     grant_user_permssion_to_model(request.user, group_name, code='change', app='auth')
-    
+
     group = Group.objects.get(name=group_name)
     junction = GroupJunction(trust=trust, content=group)
     junction.save()
 
-# View
-def create_receipt_object_for_existing_group(request, group_name, title, details):
-    grant_user_group_permssion_to_model(user, group_name, 'receipt', code='change', app='app'):
-
-    group = Group.objects.get(name=group_name)
-    trust = Trust.objects.get_or_create_group_default(group=group)
-    content = Receipt(trust=trust, title=title, details=details)
-    content.save()
+    # request.user.has_perm('auth.change_group', group) ==> True
 ```
 
 ##### Permissions Checking
