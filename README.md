@@ -7,7 +7,7 @@
 
 A `trust` is a relationship whereby content access is permitted by the creator [`settlor`] to specific user(s) [`trustee`(s)] or `group`(s). Content can be an instance of a ContentMixin subclass, or of an existing model via a junction table. Access to multiple content can be permitted by a single `trust` for maintainable permssion settings. Django's builtin model, `group`, is supported and can be used to define reusuable permissions for a `group` of `user`s.
 
-`django-trusts` also strives to be a **scalable** solution. Permissions checking is offloaded to the database by design, and the implementation minimizes database hits. Permissions are cached per `trust` for the lifecycle of `request user`. If a project's request lifecycle resolves most checked content to one or few `trusts`, which should be very typically the case, this design should be a winner in term of performance. Currently, permissions checking is done against an individual content. In the future, we would like to add permissions checking against a QuerySet of content.
+`django-trusts` also strives to be a **scalable** solution. Permissions checking is offloaded to the database by design, and the implementation minimizes database hits. Permissions are cached per `trust` for the lifecycle of `request user`. If a project's request lifecycle resolves most checked content to one or few `trusts`, which should be very typically the case, this design should be a winner in term of performance. Currently, permissions checking is done against an individual content.
 
 `django-trusts` supports Django's builtins User models `has_perms()` / `has_perms()` and does not provides any in-addition.
 
