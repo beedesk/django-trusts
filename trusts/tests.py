@@ -17,8 +17,8 @@ from django.core.management.color import no_style
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.management import create_permissions
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.management import update_all_contenttypes, update_contenttypes
-from django.test import TestCase
+from django.contrib.contenttypes.management import update_contenttypes
+from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 
 from trusts.models import Trust, TrustManager, ContentMixin, Junction
@@ -40,21 +40,12 @@ def create_test_users(test):
     test.user1.is_active = True
     test.user1.save()
 
-def delete_test_users(test):
-    test.user.delete()
-    test.user1.delete()
-
 
 class TrustTest(TestCase):
-    fixtures = ['0000_add_root_trust.json']
-
     def setUp(self):
         super(TrustTest, self).setUp()
 
         create_test_users(self)
-
-    def tearDown(self):
-        super(TrustTest, self).tearDown()
 
     def test_root(self):
         root = Trust.objects.get_root()
@@ -139,31 +130,43 @@ class TrustTest(TestCase):
 
 class RuntimeModel(object):
     """
-    Base class for tests of model mixins. To use, subclass and specify
-    the mixin class variable. A model using the mixin will be made
-    available in self.model.
+    Base class for tests of runtime model mixins.
     """
 
-    def create_test_model(self):
+    def setUp(self):
         # Create the schema for our test model
         self._style = no_style()
         sql, _ = connection.creation.sql_create_model(self.model, self._style)
 
+        #c = connection.cursor()
         with connection.cursor() as c:
             for statement in sql:
                 c.execute(statement)
 
-        app_config = apps.get_app_config(self.model._meta.app_label)
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
+        app_config = apps.get_app_config(content_model._meta.app_label)
         update_contenttypes(app_config, verbosity=1, interactive=False)
         create_permissions(app_config, verbosity=1, interactive=False)
 
-    def destroy_test_model(self):
+        super(RuntimeModel, self).setUp()
+
+    def workaround_contenttype_cache_bug(self):
+        # workaround bug: https://code.djangoproject.com/ticket/10827
+        from django.contrib.contenttypes.models import ContentType
+        ContentType.objects.clear_cache()
+
+    def tearDown(self):
         # Delete the schema for the test model
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
         sql = connection.creation.sql_destroy_model(self.model, (), self._style)
 
         with connection.cursor() as c:
             for statement in sql:
                 c.execute(statement)
+
+        self.workaround_contenttype_cache_bug()
+
+        super(RuntimeModel, self).tearDown()
 
 
 class TrustContentMixin(object):
@@ -177,21 +180,6 @@ class TrustContentMixin(object):
     def create_test_fixtures(self):
         self.group = Group(name="Test Group")
         self.group.save()
-
-    def delete_test_fixtures(self):
-        # We need to delete those fixtures that has foreign key constraints on
-        # the ModelBase() we created, otherwise we would fail at ModelBase() deletion
-
-        self.delete_contents()
-
-        if hasattr(self, 'trust1') and self.trust1 is not None and self.trust.pk is not None:
-            self.trust1.delete()
-
-        if hasattr(self, 'trust') and self.trust is not None and self.trust.pk is not None:
-            self.trust.delete()
-
-        if hasattr(self, 'group') and self.group is not None and self.group.pk is not None:
-            self.group.delete()
 
     def set_perms(self):
         for codename in ['change', 'add', 'delete']:
@@ -213,25 +201,17 @@ class TrustContentMixin(object):
     def setUp(self):
         super(TrustContentMixin, self).setUp()
 
-        self.prepare_test_model()
+        # self.prepare_test_model()
 
         create_test_users(self)
 
         self.create_test_fixtures()
 
-        self.app_label = self.model._meta.app_label
-        self.model_name = self.model._meta.model_name
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
+        self.app_label = content_model._meta.app_label
+        self.model_name = content_model._meta.model_name
 
         self.set_perms()
-
-    def tearDown(self):
-        super(TrustContentMixin, self).tearDown()
-
-        self.delete_test_fixtures()
-
-        delete_test_users(self)
-
-        self.unprepare_test_model()
 
     def assertIsIterable(self, obj, msg='Not an iterable'):
         return self.assertTrue(hasattr(obj, '__iter__'))
@@ -362,7 +342,8 @@ class TrustContentMixin(object):
         self.content1 = self.create_content(self.trust)
 
         self.reload_test_users()
-        qs = self.model.objects.filter(pk__in=[self.content.pk, self.content1.pk])
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
+        qs = content_model.objects.filter(pk__in=[self.content.pk, self.content1.pk])
         had = self.user.has_perm(self.get_perm_code(self.perm_change), qs)
         self.assertTrue(had)
 
@@ -386,22 +367,21 @@ class TrustContentMixin(object):
         ))
 
 
-class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TestCase):
-    mixin = ContentMixin
+class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase):
     contents = []
 
-    def prepare_test_model(self):
-        # Create a dummy model which extends the mixin
-        self.model = ModelBase('TestModel' + self.mixin.__name__, (self.mixin,),
-            {'__module__': self.mixin.__module__})
-        self.model.id = models.AutoField(primary_key=True)
+    def setUp(self):
+        mixin = ContentMixin
 
-        self.create_test_model()
+        # Create a dummy model which extends the mixin
+        self.model = ModelBase('TestModel' + mixin.__name__, (mixin,),
+            {'__module__': mixin.__module__})
+        self.model.id = models.AutoField(primary_key=True)
+        self.content_model = self.model
 
         Trust.objects.register_content(self.model)
 
-    def unprepare_test_model(self):
-        self.destroy_test_model()
+        super(ContentMixinTrustTestCase, self).setUp()
 
     def create_content(self, trust):
         content = self.model(trust=trust)
@@ -411,34 +391,36 @@ class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TestCase):
 
         return content
 
-    def delete_contents(self):
-        pass
 
-class JunctionTrustTestCase(TrustContentMixin, TestCase):
-    class GroupJunction(Junction):
+class JunctionTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase):
+    class TestMixin(models.Model):
         content = models.ForeignKey(Group, unique=True, null=False, blank=False)
+        name = models.CharField(max_length=40, null=False, blank=False)
 
-    def prepare_test_model(self):
-        self.model = Group
-        self.junction = self.GroupJunction
-        Trust.objects.register_junction(self.model, self.junction)
+        class Meta:
+            abstract = True
 
-    def unprepare_test_model(self):
-        pass
+    def setUp(self):
+        mixin = Junction
+        self.model = ModelBase('GroupJunction', (self.TestMixin, mixin),
+            {'__module__': mixin.__module__})
+
+        self.content_model = Group
+
+        Trust.objects.register_junction(self.content_model, self.model)
+
+        super(JunctionTrustTestCase, self).setUp()
 
     def create_content(self, trust):
         import uuid
 
-        content = self.model(name=str(uuid.uuid4()))
+        content = self.content_model(name=str(uuid.uuid4()))
         content.save()
 
-        junction = self.junction(content=content, trust=trust)
+        junction = self.model(content=content, trust=trust)
         junction.save()
 
         return content
-
-    def delete_contents(self):
-        pass
 
     @unittest.expectedFailure
     def test_read_permissions_added(self):
@@ -446,22 +428,15 @@ class JunctionTrustTestCase(TrustContentMixin, TestCase):
 
 
 class TrustTrustTestCase(TrustContentMixin, TestCase):
-    contents = []
+    serialized_rollback = True
 
-    def prepare_test_model(self):
+    def setUp(self):
         self.model = Trust
+        self.content_model = Trust
 
-    def unprepare_test_model(self):
-        pass
+        super(TrustTrustTestCase, self).setUp()
 
     def create_content(self, trust):
         content = Trust(title='Test Trust as Content', trust=trust)
         content.save()
-
-        self.contents.insert(0, content)
         return content
-
-    def delete_contents(self):
-        for c in self.contents:
-            if c.pk is not None:
-                c.delete()

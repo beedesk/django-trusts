@@ -2,11 +2,15 @@ from datetime import datetime
 
 from django.db import models
 from django.db.models import Q
+from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.contrib.auth.models import User, Group, Permission
 from django.utils.translation import ugettext_lazy as _
 
+from trusts import ENTITY_MODEL_NAME, GROUP_MODEL_NAME, PERMISSION_MODEL_NAME
+
+
 class TrustManager(models.Manager):
+    ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
     contents = set()
     junctions = dict()
 
@@ -36,7 +40,7 @@ class TrustManager(models.Manager):
         return trust, created
 
     def get_root(self):
-        return self.get(pk=1)
+        return self.get(pk=self.ROOT_PK)
 
     def get_by_content(self, obj):
         if isinstance(obj, models.QuerySet):
@@ -117,12 +121,12 @@ class Trust(ReadonlyFieldsMixin, models.Model):
     id = models.AutoField(primary_key=True)
     trust = models.ForeignKey('self', related_name='content', default=1, null=False, blank=False)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
-    settlor = models.ForeignKey(User, null=True, blank=False)
-    trustees = models.ManyToManyField(User,
+    settlor = models.ForeignKey(ENTITY_MODEL_NAME, null=True, blank=False)
+    trustees = models.ManyToManyField(ENTITY_MODEL_NAME,
                 related_name="trusts", blank=True, verbose_name=_('trustees'),
                 help_text=_('Specific trustees for this trust.')
     )
-    groups = models.ManyToManyField(Group,
+    groups = models.ManyToManyField(GROUP_MODEL_NAME,
                 related_name='trusts', blank=True, verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'
                             'get all permissions granted to each of his/her group.'),
@@ -133,7 +137,7 @@ class Trust(ReadonlyFieldsMixin, models.Model):
 
     class Meta:
         unique_together = ('settlor', 'title')
-        default_permissions = ('add', 'change', 'delete', 'read')
+        default_permissions = ('add', 'change', 'delete', 'read',)
 
     def __str__(self):
         settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
@@ -146,7 +150,7 @@ class ContentMixin(ReadonlyFieldsMixin, models.Model):
 
     class Meta:
         abstract = True
-        default_permissions = ('add', 'change', 'delete', 'read')
+        default_permissions = ('add', 'change', 'delete', 'read',)
 
 
 class Junction(ReadonlyFieldsMixin, models.Model):
