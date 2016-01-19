@@ -147,3 +147,21 @@ def read_xyz_view(request, user_id, xyz_id):
   # ...
   pass
 ```
+
+##### Customization
+
+The folllowing settings (django.conf) allow for customization and adaptation.
+
+
+###### Initial options
+
+There options must be set before first migrate or syncdb run. These settings should not be changed.
+
+TRUSTS_ENTITY_MODEL -- The model name for `settlors` and `trustees` field. Must be specified in contenttypes format, ie, 'app_label.model_name'. (default: `settings.AUTH_USER_MODEL`.)
+TRUSTS_GROUP_MODEL -- The model name for `groups` field. (default: `auth.Group`)
+TRUSTS_PERMISSION_MODEL -- The model name for `Permission`. (default: `auth.Permission`)
+TRUSTS_CREATE_ROOT -- A boolean set to True indicates root Trust model object to be created during the initial migration. (default: True)
+TRUSTS_ROOT_PK -- The `pk` of the root trust model object. (default: 1)
+TRUSTS_ROOT_SETTLOR -- The `pk` of settlor of the root trust object. (default: None)
+TRUSTS_ROOT_TITLE -- The title of root rust object. (default: "In Trust We Trust")
+
