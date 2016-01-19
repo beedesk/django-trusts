@@ -13,6 +13,7 @@ GROUP_MODEL_NAME = getattr(settings, 'TRUSTS_GROUP_MODEL', 'auth.Group')
 
 PERMISSION_MODEL_NAME = getattr(settings, 'TRUSTS_PERMISSION_MODEL', 'auth.Permission')
 
+DEFAULT_SETTLOR = getattr(settings, 'TRUSTS_DEFAULT_SETTLOR', None)
 
 def get_entity_model():
     """

@@ -7,6 +7,7 @@ from django.contrib.auth.backends import ModelBackend
 from trusts.models import Trust
 from trusts import get_permission_model
 
+
 class TrustModelBackendMixin(object):
     perm_model = get_permission_model()
 

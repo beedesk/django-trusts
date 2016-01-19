@@ -13,6 +13,7 @@ from django.db import models, connection, IntegrityError
 from django.db.models import F
 from django.db.models.base import ModelBase
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.core.management.color import no_style
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.management import create_permissions
@@ -42,14 +43,19 @@ def create_test_users(test):
 
 
 class TrustTest(TestCase):
+    ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
+    SETTLOR_PK = getattr(settings, 'TRUSTS_ROOT_SETTLOR', None)
+
     def setUp(self):
         super(TrustTest, self).setUp()
+
+        call_command('create_trust_root')
 
         create_test_users(self)
 
     def test_root(self):
         root = Trust.objects.get_root()
-        self.assertEqual(root.pk, 1)
+        self.assertEqual(root.pk, self.ROOT_PK)
         self.assertEqual(root.pk, root.trust.pk)
         self.assertEqual(Trust.objects.filter(trust=F('id')).count(), 1)
 
@@ -170,8 +176,6 @@ class RuntimeModel(object):
 
 
 class TrustContentMixin(object):
-    fixtures = ['0000_add_root_trust.json']
-
     def reload_test_users(self):
         # reloading user to purge the _trust_perm_cache
         self.user = User._default_manager.get(pk=self.user.pk)
@@ -201,7 +205,7 @@ class TrustContentMixin(object):
     def setUp(self):
         super(TrustContentMixin, self).setUp()
 
-        # self.prepare_test_model()
+        call_command('create_trust_root')
 
         create_test_users(self)
 
@@ -427,16 +431,18 @@ class JunctionTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase
         super(JunctionTrustTestCase, self).test_read_permissions_added()
 
 
-class TrustTrustTestCase(TrustContentMixin, TestCase):
+class TrustAsContentTestCase(TrustContentMixin, TestCase):
     serialized_rollback = True
+    count = 0
 
     def setUp(self):
         self.model = Trust
         self.content_model = Trust
 
-        super(TrustTrustTestCase, self).setUp()
+        super(TrustAsContentTestCase, self).setUp()
 
     def create_content(self, trust):
-        content = Trust(title='Test Trust as Content', trust=trust)
+        self.count += 1
+        content = Trust(title='Test Trust as Content %s' % self.count, trust=trust)
         content.save()
         return content

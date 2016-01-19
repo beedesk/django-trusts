@@ -3,23 +3,15 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 from django.conf import settings
-from trusts import ENTITY_MODEL_NAME, GROUP_MODEL_NAME, PERMISSION_MODEL_NAME
+from django.core.management import call_command
+
+from trusts import ENTITY_MODEL_NAME, DEFAULT_SETTLOR
 import trusts.models
+
 
 def forward(apps, schema_editor):
     if getattr(settings, 'TRUSTS_CREATE_ROOT', True):
-        pk = getattr(settings, 'TRUSTS_ROOT_PK', 1)
-        settlor = getattr(settings, 'TRUSTS_ROOT_SETTLOR', None)
-        title = getattr(settings, 'TRUSTS_ROOT_TITLE', 'In Trust We Trust')
-
-        kwargs = {'id': pk, 'title': title}
-        if settlor is not None:
-            kwargs.update({'settlor': settlor})
-
-        Trust = apps.get_model('trusts', 'trust')
-        trust = Trust(**kwargs)
-        trust.trust = trust
-        trust.save()
+        call_command('create_trust_root', apps=apps)
 
 
 class Migration(migrations.Migration):
@@ -36,7 +28,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(serialize=False, primary_key=True)),
                 ('title', models.CharField(verbose_name='title', max_length=40)),
                 ('groups', models.ManyToManyField(blank=True, related_name='trusts', verbose_name='groups', to='auth.Group', help_text='The groups this trust grants permissions to. A user willget all permissions granted to each of his/her group.')),
-                ('settlor', models.ForeignKey(to=ENTITY_MODEL_NAME, null=True)),
+                ('settlor', models.ForeignKey(to=ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR)),
                 ('trust', models.ForeignKey(to='trusts.Trust', related_name='content', default=1)),
                 ('trustees', models.ManyToManyField(blank=True, related_name='trusts', verbose_name='trustees', to=ENTITY_MODEL_NAME, help_text='Specific trustees for this trust.')),
             ],

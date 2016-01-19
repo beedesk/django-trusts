@@ -6,11 +6,12 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
 
-from trusts import ENTITY_MODEL_NAME, GROUP_MODEL_NAME, PERMISSION_MODEL_NAME
+from trusts import ENTITY_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR
 
+
+ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
 
 class TrustManager(models.Manager):
-    ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
     contents = set()
     junctions = dict()
 
@@ -40,7 +41,7 @@ class TrustManager(models.Manager):
         return trust, created
 
     def get_root(self):
-        return self.get(pk=self.ROOT_PK)
+        return self.get(pk=ROOT_PK)
 
     def get_by_content(self, obj):
         if isinstance(obj, models.QuerySet):
@@ -119,9 +120,9 @@ class ReadonlyFieldsMixin(object):
 
 class Trust(ReadonlyFieldsMixin, models.Model):
     id = models.AutoField(primary_key=True)
-    trust = models.ForeignKey('self', related_name='content', default=1, null=False, blank=False)
+    trust = models.ForeignKey('self', related_name='content', default=ROOT_PK, null=False, blank=False)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
-    settlor = models.ForeignKey(ENTITY_MODEL_NAME, null=True, blank=False)
+    settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=False, blank=False)
     trustees = models.ManyToManyField(ENTITY_MODEL_NAME,
                 related_name="trusts", blank=True, verbose_name=_('trustees'),
                 help_text=_('Specific trustees for this trust.')
