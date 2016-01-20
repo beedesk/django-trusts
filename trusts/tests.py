@@ -12,6 +12,7 @@ from django.apps import apps
 from django.db import models, connection, IntegrityError
 from django.db.models import F
 from django.db.models.base import ModelBase
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.color import no_style
@@ -41,6 +42,12 @@ def create_test_users(test):
     test.user1.is_active = True
     test.user1.save()
 
+def get_or_create_root_user(test):
+    # Create a user.
+
+    pk = getattr(settings, 'TRUSTS_ROOT_SETTLOR', 1)
+    test.user_root, created = User.objects.get_or_create(pk=pk)
+
 
 class TrustTest(TestCase):
     ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
@@ -50,6 +57,8 @@ class TrustTest(TestCase):
         super(TrustTest, self).setUp()
 
         call_command('create_trust_root')
+
+        get_or_create_root_user(self)
 
         create_test_users(self)
 
@@ -178,6 +187,7 @@ class RuntimeModel(object):
 class TrustContentMixin(object):
     def reload_test_users(self):
         # reloading user to purge the _trust_perm_cache
+        self.user_root = User._default_manager.get(pk=self.user_root.pk)
         self.user = User._default_manager.get(pk=self.user.pk)
         self.user1 = User._default_manager.get(pk=self.user1.pk)
 
@@ -204,6 +214,8 @@ class TrustContentMixin(object):
 
     def setUp(self):
         super(TrustContentMixin, self).setUp()
+
+        get_or_create_root_user(self)
 
         call_command('create_trust_root')
 
