@@ -128,24 +128,26 @@ def check_permission_to_a_specific_group(request, group_id):
   return request.user.has_perm('app.change_group', Group.objects.get(id=group_id))
 ```
 
-##### Use decorators (not implemented)
+##### Use decorators
 
 ```python
 from trusts.decorators import permission_required
 from app.models import Xyz
 
-def get_xyz(request, user_id, xyz_id):
-  return Xyz.objects.get(id=xyz_id)
-
-@permission_required('can_edit_xyz', obj_func=get_xyz)
-def edit_xyz_view(request, user_id, xyz_id):
+@permissible_object('xyz', fieldlookups_kwargs={'pk': 'xyz_id'})
+@permission_required('xyz.can_change')
+def edit_xyz_view(request, xyz_id):
   # ...
   pass
 
-@permission_required('can_read_xyz', model_obj=(Xyz, 'xyz_id'))
-def read_xyz_view(request, user_id, xyz_id):
+@permissible_object('xyz', fieldlookups_kwargs={'pk': 'xyz_id'})
+@permissible_object('project', fieldlookups_kwargs={'pk': 'project_id'})
+@permission_required('xyz.can_change')
+@permission_required('project.can_read')
+def move_xyz_to_project_view(request, xyz_id, project_id):
   # ...
   pass
+
 ```
 
 ##### Customization
