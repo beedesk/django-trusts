@@ -10,11 +10,13 @@ from django.utils.six.moves.urllib.parse import urlparse
 from django.http import Http404
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
-    """
+    '''
     Decorator for views that checks that the user passes the given test,
     redirecting to the log-in page if necessary. The test should be a callable
     that takes the user object and returns True if the user passes.
-    """
+
+    Adapted from `django/contrib/auth/decorator.py`
+    '''
 
     def decorator(view_func):
         @wraps(view_func, assigned=available_attrs(view_func))
@@ -69,10 +71,16 @@ def _collect_args(fieldlookups, args):
 
 def permissible_object(func=None, contenttype=None, or_404=True, kind='obj',
             fieldlookups_kwargs={}, fieldlookups_getparams={}, fieldlookups_postparams={}, **kwargs):
+    '''
+    Decorator for `permission` decorated (such as @permission_required) views for
+    object-level permission check. This decorators add `permissible_items` to the
+    request object.
+    '''
+
     def decorator(view_func):
         @wraps(view_func, assigned=available_attrs(view_func))
         def _wrapped_view(request, *args, **kwargs):
-            if not hasattr(request, 'permissible'):
+            if not hasattr(request, 'permissible_items'):
                 request.permissible_items = []
 
             params = {}
@@ -110,12 +118,15 @@ def permissible_queryset(func=None, contenttype=None, or_404=True,
     )
 
 def permission_required(func=None, perm=None, login_url=None, raise_exception=False):
-    """
+    '''
     Decorator for views that checks whether a user has a particular permission
     enabled, redirecting to the log-in page if necessary.
     If the raise_exception parameter is given the PermissionDenied exception
     is raised.
-    """
+
+    Adapted `django/contrib/auth/decorator.py`
+    '''
+
     def check_perms(request, *args, **kwargs):
         if not isinstance(perm, (list, tuple)):
             perms = (perm, )
