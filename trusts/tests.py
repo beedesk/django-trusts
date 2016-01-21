@@ -7,6 +7,7 @@ from decimal import Decimal
 from urllib import urlencode
 from urlparse import urlparse
 from datetime import date, datetime, timedelta
+from mock import Mock
 
 from django.apps import apps
 from django.db import models, connection, IntegrityError
@@ -17,14 +18,17 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.color import no_style
 from django.contrib.auth.models import User, Group, Permission
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.management import create_permissions
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.management import update_contenttypes
 from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
+from django.http.request import HttpRequest
 
 from trusts.models import Trust, TrustManager, ContentMixin, Junction
 from trusts.backends import TrustModelBackend
+from trusts.decorators import permission_required, permissible_object, permissible_queryset, _get_permissible_items
 
 
 def create_test_users(test):
@@ -143,6 +147,49 @@ class TrustTest(TestCase):
             pass
 
 
+class DecoratorsTest(TestCase):
+    ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
+    SETTLOR_PK = getattr(settings, 'TRUSTS_ROOT_SETTLOR', None)
+
+    def setUp(self):
+        super(DecoratorsTest, self).setUp()
+
+        call_command('create_trust_root')
+
+        get_or_create_root_user(self)
+
+        create_test_users(self)
+
+    def test_permissible_object(self):
+        mock = Mock()
+
+        request = HttpRequest()
+        setattr(request, 'user', self.user)
+
+        decorated_func = permissible_object(mock, contenttype='auth_group', fieldlookups_args={'pk': 'pk'})
+        decorated_func(request, pk=1)
+
+        self.assertTrue(mock.called)
+        mock.assert_called_with(request, pk=1)
+        self.assertTrue(hasattr(request, 'permissible_items'))
+        items = request.permissible_items
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['kind'], 'obj')
+        self.assertEqual(item['or_404'], True)
+        self.assertEqual(item['contenttype'], 'auth_group')
+
+    def test_get_permissible_items(self):
+        mock = Mock()
+
+        request = HttpRequest()
+        setattr(request, 'user', self.user)
+
+        decorated_func = permissible_object(mock, fieldlookups_args={'pk': 'pk'})
+        decorated_func(request, contenttype='auth_group', pk=1)
+        item = _get_permissible_items(request, 'auth_group')
+
+
 class RuntimeModel(object):
     """
     Base class for tests of runtime model mixins.
@@ -153,7 +200,6 @@ class RuntimeModel(object):
         self._style = no_style()
         sql, _ = connection.creation.sql_create_model(self.model, self._style)
 
-        #c = connection.cursor()
         with connection.cursor() as c:
             for statement in sql:
                 c.execute(statement)
