@@ -2,12 +2,13 @@ from functools import wraps
 
 from django.conf import settings
 from django.contrib.auth import REDIRECT_FIELD_NAME
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist
 from django.shortcuts import resolve_url
 from django.contrib.contenttypes.models import ContentType
 from django.utils.decorators import available_attrs
 from django.utils.six.moves.urllib.parse import urlparse
 from django.http import Http404
+
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
     '''
@@ -38,29 +39,14 @@ def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_
         return _wrapped_view
     return decorator
 
-def _get_permissible_items(request, applabel_modelname):
-    applabel, modelname = applabel_modelname.rsplit('_', 1)
-
-    typematched = []
-    for item in request.permissible_items or []:
-        if item['contenttype'] == applabel_modelname:
-            typematched.append(item)
-
-    # @todo -- Need to work `or_404` in
-    if not typematched:
-        return None
-    if len(typematched) > 1:
-        raise ValueError('Multiple obj or qs on the same type is not yet supported.')
-
-    type = typematched[0]
-    ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
-    if type['kind'] == 'obj':
-        return ctype.get_object_for_this_type(**type['params'])
-    else:
-        return ctype.model_class().objects.filter(**type['params'])
-
 def _collect_args(fieldlookups, args):
     results = {}
+
+    if not fieldlookups:
+        return results
+    if not args:
+        return fieldlookups
+
     for lookup, arg_name in fieldlookups.iteritems():
         if arg_name in args:
             results[lookup] = args[arg_name]
@@ -69,55 +55,17 @@ def _collect_args(fieldlookups, args):
 
     return results
 
-def permissible_object(func=None, contenttype=None, or_404=True, kind='obj',
-            fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
-    '''
-    Decorator for `permission` decorated (such as @permission_required) views for
-    object-level permission check. This decorators add `permissible_items` to the
-    request object.
-    '''
+def _get_permissible_items(request, applabel_modelname, fieldlookups):
+    if fieldlookups is None:
+        return None
 
-    def decorator(view_func):
-        @wraps(view_func, assigned=available_attrs(view_func))
-        def _wrapped_view(request, *args, **kwargs):
-            if not hasattr(request, 'permissible_items'):
-                request.permissible_items = []
+    applabel, modelname = applabel_modelname.rsplit('_', 1)
+    ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
 
-            params = {}
-            if fieldlookups_kwargs:
-                params.update(_collect_args(fieldlookups_kwargs, kwargs))
+    return ctype.model_class().objects.filter(**fieldlookups)
 
-            if fieldlookups_getparams:
-                params.update(_collect_args(fieldlookups_getparams, request.GET))
-
-            if fieldlookups_postparams:
-                params.update(_collect_args(fieldlookups_postparams, request.POST))
-
-            request.permissible_items.append({
-                'kind': kind,
-                'or_404': or_404,
-                'contenttype': contenttype,
-                'params': params,
-                'extra': kwargs
-            })
-
-            return view_func(request, *args, **kwargs)
-        return _wrapped_view
-    if func:
-        return decorator(func)
-    return decorator
-
-def permissible_queryset(func=None, contenttype=None, or_404=True,
-            fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
-    return permissible_object(
-        func, contenttype, or_404=or_404,
-        fieldlookups_kwargs=fieldlookups_kwargs,
-        fieldlookups_getparams=fieldlookups_getparams,
-        fieldlookups_postparams=fieldlookups_getparams,
-        **kwargs
-    )
-
-def permission_required(func=None, perm=None, login_url=None, raise_exception=False):
+def permission_required(perm, login_url=None, raise_exception=False, or_404=False,
+        fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
     '''
     Decorator for views that checks whether a user has a particular permission
     enabled, redirecting to the log-in page if necessary.
@@ -133,9 +81,20 @@ def permission_required(func=None, perm=None, login_url=None, raise_exception=Fa
         else:
             perms = perm
 
-        all_passed = True
         applabel_modelname, can_action = perm.split('.', 1)
-        items = _get_permissible_items(request, applabel_modelname)
+
+        fieldlookups = None
+        if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
+            fieldlookups = {}
+            fieldlookups.update(_collect_args(fieldlookups_kwargs, kwargs))
+            fieldlookups.update(_collect_args(fieldlookups_getparams, request.GET))
+            fieldlookups.update(_collect_args(fieldlookups_postparams, request.POST))
+
+        items = None
+        if fieldlookups is not None:
+            items = _get_permissible_items(request, applabel_modelname, fieldlookups)
+            if items is None:
+                raise Http404
 
         if request.user.has_perms(perms, items):
             return True
@@ -145,7 +104,4 @@ def permission_required(func=None, perm=None, login_url=None, raise_exception=Fa
             raise PermissionDenied
         return False
 
-    decorator = request_passes_test(check_perms, login_url=login_url)
-    if func:
-        return decorator(func)
-    return decorator
+    return request_passes_test(check_perms, login_url=login_url)

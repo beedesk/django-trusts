@@ -28,7 +28,7 @@ from django.http.request import HttpRequest
 
 from trusts.models import Trust, TrustManager, ContentMixin, Junction
 from trusts.backends import TrustModelBackend
-from trusts.decorators import permission_required, permissible_object, permissible_queryset, _get_permissible_items
+from trusts.decorators import permission_required
 
 
 def create_test_users(test):
@@ -157,60 +157,7 @@ class DecoratorsTest(TestCase):
 
         create_test_users(self)
 
-    def test_permissible_object(self):
-        mock = Mock()
-
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-
-        decorated_func = permissible_object(mock, contenttype='auth_group', fieldlookups_args={'pk': 'pk'})
-        decorated_func(request, pk=1)
-
-        self.assertTrue(mock.called)
-        mock.assert_called_with(request, pk=1)
-        self.assertTrue(hasattr(request, 'permissible_items'))
-        items = request.permissible_items
-        self.assertEqual(len(items), 1)
-        item = items[0]
-        self.assertEqual(item['kind'], 'obj')
-        self.assertEqual(item['or_404'], True)
-        self.assertEqual(item['contenttype'], 'auth_group')
-
-    def test__get_permissible_items(self):
-        mock = Mock()
-
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-
-        decorated_func = permissible_object(mock, contenttype='auth_group', fieldlookups_kwargs={'pk': 'pk'})
-        decorated_func(request, contenttype='auth_group', pk=1)
-        try:
-            item = _get_permissible_items(request, 'auth_group')
-            self.fail('Expect NotExist not raised')
-        except:
-            pass
-
-        self.group = Group(name='Group A')
-        self.group.save()
-        decorated_func = permissible_object(mock, contenttype='auth_group', fieldlookups_kwargs={'pk': 'pk'})
-        decorated_func(request, contenttype='auth_group', pk=self.group.pk)
-        item = _get_permissible_items(request, 'auth_group')
-        self.assertIsNotNone(item)
-
-    def test_adhoc(self):
-        applabel_modelname = 'auth_group'
-        applabel, modelname = applabel_modelname.rsplit('_', 1)
-
-        self.group = Group(name='Group A')
-        self.group.save()
-        self.groupB = Group(name='Group B')
-        self.groupB.save()
-        ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
-        params = {'pk': self.groupB.pk}
-        ctype.get_object_for_this_type(**params)
-
     def test_permission_required(self):
-
         self.group = Group(name='Group A')
         self.group.save()
 
@@ -219,36 +166,45 @@ class DecoratorsTest(TestCase):
         request.META['SERVER_NAME'] = 'beedesk.com'
         request.META['SERVER_PORT'] = 80
 
-        # test a, has_perms() == False
+        # test a) has_perms() == False
         mock = Mock(return_value='Response')
         has_perms = Mock(return_value=False)
         self.user.has_perms = has_perms
 
-        perm_required = permission_required(mock, perm='auth_group.can_read')
-        decorated_func = permissible_object(perm_required, contenttype='auth_group', fieldlookups_args={'pk': 'pk'})
-
+        decorated_func = permission_required(
+            'auth_group.can_read',
+            fieldlookups_kwargs={'pk': 'pk'}
+        )(mock)
         response = decorated_func(request, pk=self.group.pk)
 
         self.assertFalse(mock.called)
         self.assertTrue(response.status_code, 403)
         self.assertTrue(has_perms.called)
-        has_perms.assert_called_with(('auth_group.can_read',), self.group)
+        self.assertEqual(has_perms.call_args[0][0], ('auth_group.can_read',))
+        filter = has_perms.call_args[0][1]
+        self.assertIsNotNone(filter)
+        self.assertEqual(filter.count(), 1)
+        self.assertEqual(filter.first().pk, self.group.pk)
 
-        # test b, has_perms() == False
+        # test b) has_perms() == False
         mock = Mock(return_value='Response')
         has_perms = Mock(return_value=True)
         self.user.has_perms = has_perms
 
-        perm_required = permission_required(mock, perm='auth_group.can_read')
-        decorated_func = permissible_object(perm_required, contenttype='auth_group', fieldlookups_args={'pk': 'pk'})
-
+        decorated_func = permission_required(
+            'auth_group.can_read',
+            fieldlookups_kwargs={'pk': 'pk'}
+        )(mock)
         response = decorated_func(request, pk=self.group.pk)
 
         self.assertTrue(mock.called)
         mock.assert_called_with(request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
-        self.assertTrue(has_perms.called)
-        has_perms.assert_called_with(('auth_group.can_read',), self.group)
+        self.assertEqual(has_perms.call_args[0][0], ('auth_group.can_read',))
+        filter = has_perms.call_args[0][1]
+        self.assertIsNotNone(filter)
+        self.assertEqual(filter.count(), 1)
+        self.assertEqual(filter.first().pk, self.group.pk)
 
 
 class RuntimeModel(object):
