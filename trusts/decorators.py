@@ -24,6 +24,7 @@ def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_
         def _wrapped_view(request, *args, **kwargs):
             if test_func(request, *args, **kwargs):
                 return view_func(request, *args, **kwargs)
+
             path = request.build_absolute_uri()
             resolved_login_url = resolve_url(login_url or settings.LOGIN_URL)
             # If the login url is the same scheme and net location then just
@@ -55,16 +56,21 @@ def _collect_args(fieldlookups, args):
 
     return results
 
-def _get_permissible_items(request, applabel_modelname, fieldlookups):
+def _get_permissible_items(request, applabel__action_modelname, fieldlookups):
     if fieldlookups is None:
         return None
 
-    applabel, modelname = applabel_modelname.rsplit('_', 1)
-    ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
+    applabel, action_modelname = applabel__action_modelname.split('.', 1)
+    action, modelname = action_modelname.split('_', 1)
+    try:
+        ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
 
-    return ctype.model_class().objects.filter(**fieldlookups)
+        return ctype.model_class().objects.filter(**fieldlookups)
+    except ObjectDoesNotExist:
+        raise ValueError("Permission code must be of the form 'app_label.action_modelname'.")
 
-def permission_required(perm, login_url=None, raise_exception=False, or_404=False,
+
+def permission_required(perm, or_404=False, raise_exception=True, login_url=None,
         fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
     '''
     Decorator for views that checks whether a user has a particular permission
@@ -72,7 +78,7 @@ def permission_required(perm, login_url=None, raise_exception=False, or_404=Fals
     If the raise_exception parameter is given the PermissionDenied exception
     is raised.
 
-    Adapted `django/contrib/auth/decorator.py`
+    Adapted from `django/contrib/auth/decorator.py`
     '''
 
     def check_perms(request, *args, **kwargs):
@@ -80,8 +86,6 @@ def permission_required(perm, login_url=None, raise_exception=False, or_404=Fals
             perms = (perm, )
         else:
             perms = perm
-
-        applabel_modelname, can_action = perm.split('.', 1)
 
         fieldlookups = None
         if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
@@ -92,7 +96,7 @@ def permission_required(perm, login_url=None, raise_exception=False, or_404=Fals
 
         items = None
         if fieldlookups is not None:
-            items = _get_permissible_items(request, applabel_modelname, fieldlookups)
+            items = _get_permissible_items(request, perm, fieldlookups)
             if items is None:
                 raise Http404
 
