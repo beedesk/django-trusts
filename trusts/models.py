@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
 
-from trusts import ENTITY_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR
+from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR
 
 
 ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
@@ -32,10 +32,9 @@ class TrustManager(models.Manager):
         except Trust.DoesNotExist:
             params = {k: v for k, v in kwargs.items() if '__' not in k}
             params.update(defaults)
-            params.update({'settlor': settlor, 'title': '', 'trust': root_trust})
+            params.update({'title': '', 'trust': root_trust})
             trust = self.model(**params)
             trust.save()
-            trust.trustees.add(settlor)
             created = True
 
         return trust, created
@@ -72,7 +71,7 @@ class TrustManager(models.Manager):
         if 'group__user' in kwargs:
             raise TypeError('"%s" are invalid keyword arguments' % 'group__user')
 
-        return self.filter(Q(groups__user=user) | Q(trustees=user), **kwargs)
+        return self.filter(Q(groups__user=user) | Q(trustees__entity=user), **kwargs)
 
     def is_content(self, obj):
         if isinstance(obj, models.QuerySet):
@@ -123,10 +122,6 @@ class Trust(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('self', related_name='content', default=ROOT_PK, null=False, blank=False)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
     settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=False, blank=False)
-    trustees = models.ManyToManyField(ENTITY_MODEL_NAME,
-                related_name="trusts", blank=True, verbose_name=_('trustees'),
-                help_text=_('Specific trustees for this trust.')
-    )
     groups = models.ManyToManyField(GROUP_MODEL_NAME,
                 related_name='trusts', blank=True, verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'
@@ -143,6 +138,15 @@ class Trust(ReadonlyFieldsMixin, models.Model):
     def __str__(self):
         settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
         return 'Trust[%s]: "%s"' % (self.id, self.title)
+
+
+class TrustUserPermission(models.Model):
+    trust = models.ForeignKey('trusts.Trust', related_name='trustees', null=False, blank=False)
+    entity = models.ForeignKey(ENTITY_MODEL_NAME, related_name='trustpermissions', null=False, blank=False)
+    permission = models.ForeignKey(PERMISSION_MODEL_NAME, related_name='trustentities', null=False, blank=False)
+
+    class Meta:
+        unique_together = ('trust', 'entity', 'permission')
 
 
 class ContentMixin(ReadonlyFieldsMixin, models.Model):

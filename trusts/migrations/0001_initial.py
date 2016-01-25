@@ -5,7 +5,7 @@ from django.db import migrations, models
 from django.conf import settings
 from django.core.management import call_command
 
-from trusts import ENTITY_MODEL_NAME, DEFAULT_SETTLOR
+from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, DEFAULT_SETTLOR
 import trusts.models
 
 
@@ -30,12 +30,20 @@ class Migration(migrations.Migration):
                 ('groups', models.ManyToManyField(blank=True, related_name='trusts', verbose_name='groups', to='auth.Group', help_text='The groups this trust grants permissions to. A user willget all permissions granted to each of his/her group.')),
                 ('settlor', models.ForeignKey(to=ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR)),
                 ('trust', models.ForeignKey(to='trusts.Trust', related_name='content', default=1)),
-                ('trustees', models.ManyToManyField(blank=True, related_name='trusts', verbose_name='trustees', to=ENTITY_MODEL_NAME, help_text='Specific trustees for this trust.')),
             ],
             options={
                 'default_permissions': ('add', 'change', 'delete', 'read'),
             },
             bases=(trusts.models.ReadonlyFieldsMixin, models.Model),
+        ),
+        migrations.CreateModel(
+            name='TrustUserPermission',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, verbose_name='ID', serialize=False)),
+                ('entity', models.ForeignKey(to=ENTITY_MODEL_NAME, related_name='trustpermissions')),
+                ('permission', models.ForeignKey(to=PERMISSION_MODEL_NAME, related_name='trustentities')),
+                ('trust', models.ForeignKey(to='trusts.Trust', related_name='trustees')),
+            ],
         ),
         migrations.AlterUniqueTogether(
             name='trust',

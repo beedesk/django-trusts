@@ -59,8 +59,8 @@ class TrustModelBackendMixin(object):
                 trust_perm = set([self._get_perm_code(p) for p in
                     self.perm_model.objects.filter(
                         Q(group__trusts=pk, group__user=user_obj) |
-                        Q(user__trusts=pk, user=user_obj)
-                    ).order_by('group__trusts', 'user__trusts')
+                        Q(trustentities__trust=pk, trustentities__entity=user_obj)
+                    ).order_by('group__trusts', 'trustentities__entity')
                 ])
 
                 perm_cache[pk] = trust_perm

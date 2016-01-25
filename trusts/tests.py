@@ -26,7 +26,7 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, TrustManager, ContentMixin, Junction
+from trusts.models import Trust, TrustUserPermission, TrustManager, ContentMixin, Junction
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -65,6 +65,11 @@ class TrustTest(TestCase):
         get_or_create_root_user(self)
 
         create_test_users(self)
+
+    def get_perm_code(self, perm):
+        return '%s.%s' % (
+            perm.content_type.app_label, perm.codename
+         )
 
     def test_root(self):
         root = Trust.objects.get_root()
@@ -105,14 +110,16 @@ class TrustTest(TestCase):
 
         self.trust2 = Trust(settlor=self.user, title='Title 0A', trust=Trust.objects.get_root())
         self.trust2.save()
-        self.trust2.trustees.add(self.user)
+        tup = TrustUserPermission(trust=self.trust2, entity=self.user, permission=Permission.objects.first())
+        tup.save()
 
         self.trust3 = Trust(settlor=self.user, title='Title 0B', trust=Trust.objects.get_root())
         self.trust3.save()
 
         self.trust4 = Trust(settlor=self.user1, title='Title 1A', trust=Trust.objects.get_root())
         self.trust4.save()
-        self.trust4.trustees.add(self.user)
+        tup = TrustUserPermission(trust=self.trust4, entity=self.user, permission=Permission.objects.first())
+        tup.save()
 
         self.trust5 = Trust(settlor=self.user1, title='Title 1B', trust=Trust.objects.get_root())
         self.trust5.save()
@@ -126,8 +133,7 @@ class TrustTest(TestCase):
 
         trusts = Trust.objects.filter_by_user_perm(self.user)
         trust_pks = [t.pk for t in trusts]
-        self.assertEqual(trusts.count(), 4)
-        self.assertTrue(self.trust1.id in trust_pks)
+        self.assertEqual(trusts.count(), 3)
         self.assertTrue(self.trust2.id in trust_pks)
         self.assertTrue(self.trust4.id in trust_pks)
         self.assertTrue(self.trust5.id in trust_pks)
@@ -172,15 +178,16 @@ class DecoratorsTest(TestCase):
         self.user.has_perms = has_perms
 
         decorated_func = permission_required(
-            'auth_group.can_read',
-            fieldlookups_kwargs={'pk': 'pk'}
+            'auth.read_group',
+            fieldlookups_kwargs={'pk': 'pk'},
+            raise_exception=False
         )(mock)
         response = decorated_func(request, pk=self.group.pk)
 
         self.assertFalse(mock.called)
         self.assertTrue(response.status_code, 403)
         self.assertTrue(has_perms.called)
-        self.assertEqual(has_perms.call_args[0][0], ('auth_group.can_read',))
+        self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
         filter = has_perms.call_args[0][1]
         self.assertIsNotNone(filter)
         self.assertEqual(filter.count(), 1)
@@ -192,7 +199,7 @@ class DecoratorsTest(TestCase):
         self.user.has_perms = has_perms
 
         decorated_func = permission_required(
-            'auth_group.can_read',
+            'auth.read_group',
             fieldlookups_kwargs={'pk': 'pk'}
         )(mock)
         response = decorated_func(request, pk=self.group.pk)
@@ -200,7 +207,7 @@ class DecoratorsTest(TestCase):
         self.assertTrue(mock.called)
         mock.assert_called_with(request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
-        self.assertEqual(has_perms.call_args[0][0], ('auth_group.can_read',))
+        self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
         filter = has_perms.call_args[0][1]
         self.assertIsNotNone(filter)
         self.assertEqual(filter.count(), 1)
@@ -377,13 +384,8 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
-        self.user.user_permissions.add(self.perm_change)
-
-        self.reload_test_users()
-        had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
-        self.assertFalse(had)
-
-        self.trust.trustees.add(self.user)
+        tup = TrustUserPermission(trust=self.trust, entity=self.user, permission=self.perm_change)
+        tup.save()
 
         self.reload_test_users()
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
@@ -408,8 +410,8 @@ class TrustContentMixin(object):
         had = self.user.has_perm(self.get_perm_code(self.perm_change), content)
         self.assertFalse(had)
 
-        self.user.user_permissions.add(self.perm_change)
-        had = self.user.has_perm(self.get_perm_code(self.perm_change), content)
+        tup = TrustUserPermission(trust=trust, entity=self.user, permission=self.perm_change)
+        tup.save()
 
         self.reload_test_users()
         had = self.user.has_perm(self.get_perm_code(self.perm_change), content)
