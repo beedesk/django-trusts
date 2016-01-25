@@ -74,15 +74,6 @@ from django.contrib.auth.models import User, Group, Permission
 from trusts.models import Trust
 
 # Helper function
-def grant_user_permission_to_model(user, model_name, code='change', app='app'):
-    # Django's auth permission mechanism, nothing specific to `django-trust`
-    perm = Permission.objects.get_by_natural_key('change_%s' % model_name, app, model_name)
-    user.user_permissions.add(perm)
-
-    # user.has_perm('%s.change_%s' % (app, model_name)) ==> True
-    # user.has_perm('%s.change_%s' % (app, model_name), obj) ==> False
-
-# Helper function
 def grant_user_group_permssion_to_model(user, group_name, model_name, code='change', app='app'):
     # Django's auth permission mechanism, nothing specific to `django-trust`
 
@@ -99,13 +90,18 @@ def grant_user_group_permssion_to_model(user, group_name, model_name, code='chan
 
 # View
 def create_receipt_object_for_user(request, title, details):
-    grant_user_permssion_to_model(request.user, 'receipt', code='change')
+    trust = Trust.objects.get_or_create_settlor_default(settlor=request.user) 
 
-    trust = Trust.objects.get_or_create_settlor_default(settlor=request.user)
     content = Receipt(trust=trust, title=title, details=details)
     content.save()
 
-    # request.user.has_perm('app.change_receipt', content) ==> True
+    model_name = receipt.__class__.__name__.lower()
+    perm = Permission.objects.get_by_natural_key('%_%' % ('change', model_name), 'app', model_name)
+
+    tup = TrustUserPermission(trust=trust, entity=request.user, permission=perm)
+    tup.save()
+
+    # request.user.has_perm('%s.change_%s' % ('app', model_name), content) ==> True
 
 # View
 def give_user_change_permission_on_existing_group(request, user, group_name):
