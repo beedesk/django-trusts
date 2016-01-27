@@ -49,5 +49,9 @@ class Migration(migrations.Migration):
             name='trust',
             unique_together=set([('settlor', 'title')]),
         ),
+        migrations.AlterUniqueTogether(
+            name='trustuserpermission',
+            unique_together=set([('trust', 'entity', 'permission')]),
+        ),
         migrations.RunPython(forward)
     ]

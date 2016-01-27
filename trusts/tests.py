@@ -26,7 +26,7 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, TrustUserPermission, TrustManager, ContentMixin, Junction
+from trusts.models import Trust, TrustUserPermission, TrustManager, Content, ContentMixin, Junction
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -460,8 +460,6 @@ class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTest
         self.model.id = models.AutoField(primary_key=True)
         self.content_model = self.model
 
-        Trust.objects.register_content(self.model)
-
         super(ContentMixinTrustTestCase, self).setUp()
 
     def create_content(self, trust):
@@ -481,14 +479,13 @@ class JunctionTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase
         class Meta:
             abstract = True
 
+
     def setUp(self):
         mixin = Junction
         self.model = ModelBase('GroupJunction', (self.TestMixin, mixin),
             {'__module__': mixin.__module__})
 
         self.content_model = Group
-
-        Trust.objects.register_junction(self.content_model, self.model)
 
         super(JunctionTrustTestCase, self).setUp()
 

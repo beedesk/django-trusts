@@ -54,3 +54,5 @@ def get_permission_model():
         raise ImproperlyConfigured(
             "TRUSTS_PERMISSION_MODEL refers to model '%s' that has not been installed" % PERMISSION_MODEL_NAME
         )
+
+default_app_config = 'trusts.apps.AppConfig'

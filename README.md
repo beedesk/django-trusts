@@ -45,8 +45,6 @@ class Receipt(ContentMixin, models.Model):
     account = models.ForeignKey(Account, null=True)
     merchant = models.ForeignKey(Merchant, null=True)
     # ... other field
-
-Trust.objects.register_content(Receipt)
 ```
 
 
@@ -63,8 +61,6 @@ from trusts.models import Junction
 class GroupJunction(Junction, models.Model):
     # field name must be named as `content` and unique=True, null=False, blank=False
     content = models.ForeignKey(django.contrib.auth.models.Group, unique=True, null=False, blank=False)
-
-Trust.objects.register_junction(Group, GroupJunction)
 ```
 
 ##### Permission Assignments

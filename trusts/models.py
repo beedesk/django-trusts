@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from django.db import models
-from django.db.models import Q
+from django.db.models import signals, Q
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
@@ -12,9 +12,6 @@ from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, D
 ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
 
 class TrustManager(models.Manager):
-    contents = set()
-    junctions = dict()
-
     def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
         if 'trust' in kwargs:
             raise TypeError('"%s" are invalid keyword arguments' % 'trust')
@@ -24,20 +21,15 @@ class TrustManager(models.Manager):
             # @TODO -- Handle anonymous settings
             raise ValueError('Anonymous is not yet supported.')
 
-        created = False
-
-        root_trust = self.get_root()
         try:
-            trust = self.get(settlor=settlor, title='', **kwargs)
+            return self.get(settlor=settlor, title='', **kwargs), False
         except Trust.DoesNotExist:
             params = {k: v for k, v in kwargs.items() if '__' not in k}
             params.update(defaults)
-            params.update({'title': '', 'trust': root_trust})
+            params.update({'title': '', 'trust_id': ROOT_PK})
             trust = self.model(**params)
             trust.save()
-            created = True
-
-        return trust, created
+            return trust, True
 
     def get_root(self):
         return self.get(pk=ROOT_PK)
@@ -50,21 +42,22 @@ class TrustManager(models.Manager):
             klass = obj.__class__
             is_qs = False
 
-        if klass == Trust or klass in self.contents:
-            if is_qs:
-                return obj.values('trust').distinct()
+        if Content.is_content_model(klass):
+            if Junction.is_junction_content_model(klass):
+                junction = Junction.get_junction_model(klass).objects.filter(content=obj)
+                if is_qs:
+                    related = junction
+                else:
+                    related = junction.select_related('trust').first()
             else:
-                if hasattr(obj, 'trust'):
-                    return getattr(obj, 'trust')
-        elif klass in self.junctions:
-            junction_klass = self.junctions[klass]
-            if is_qs:
-                return junction_klass.objects.filter(content=obj).values('trust').distinct()
-            else:
-                junction = junction_klass.objects.filter(content=obj).select_related('trust').first()
+                related = obj
 
-                if junction is not None:
-                    return getattr(junction, 'trust')
+            if is_qs:
+                values = Trust.objects.filter(pk__in=related.values_list('trust', flat=True)).distinct()
+                return values
+            else:
+                if related is not None:
+                    return getattr(related, 'trust')
         return None
 
     def filter_by_user_perm(self, user, **kwargs):
@@ -72,28 +65,6 @@ class TrustManager(models.Manager):
             raise TypeError('"%s" are invalid keyword arguments' % 'group__user')
 
         return self.filter(Q(groups__user=user) | Q(trustees__entity=user), **kwargs)
-
-    def is_content(self, obj):
-        if isinstance(obj, models.QuerySet):
-            klass = obj.model
-            is_qs = True
-        else:
-            klass = obj.__class__
-            is_qs = False
-
-        if klass == Trust or klass in self.contents:
-            if is_qs or hasattr(obj, 'trust'):
-                return True
-        elif klass in self.junctions:
-            return True
-
-        return False
-
-    def register_content(self, klass):
-        self.contents.add(klass)
-
-    def register_junction(self, content_klass, junction_klass):
-        self.junctions[content_klass] = junction_klass
 
 
 class ReadonlyFieldsMixin(object):
@@ -117,7 +88,41 @@ class ReadonlyFieldsMixin(object):
                         raise ValidationError('Field "%s" is readonly.' % 'trust')
 
 
-class Trust(ReadonlyFieldsMixin, models.Model):
+class Content(ReadonlyFieldsMixin, models.Model):
+    _contents = set()
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def register_content(cls, klass, path=None):
+        if path is None:
+            content_model_fields = [f for f in klass._meta.fields if f.rel is not None and f.name == 'trust']
+            if len(content_model_fields) != 1:
+                raise AttributeError('Expect "trust" field in model %s.' % klass)
+
+        cls._contents.add(klass)
+
+    @classmethod
+    def is_content_model(cls, klass):
+        if klass in cls._contents:
+            return True
+
+        return False
+
+    @classmethod
+    def is_content(cls, obj):
+        if isinstance(obj, models.QuerySet):
+            klass = obj.model
+            is_qs = True
+        else:
+            klass = obj.__class__
+            is_qs = False
+
+        return cls.is_content_model(klass)
+
+
+class Trust(Content):
     id = models.AutoField(primary_key=True)
     trust = models.ForeignKey('self', related_name='content', default=ROOT_PK, null=False, blank=False)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
@@ -138,6 +143,7 @@ class Trust(ReadonlyFieldsMixin, models.Model):
     def __str__(self):
         settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
         return 'Trust[%s]: "%s"' % (self.id, self.title)
+Content.register_content(Trust)
 
 
 class TrustUserPermission(models.Model):
@@ -149,8 +155,42 @@ class TrustUserPermission(models.Model):
         unique_together = ('trust', 'entity', 'permission')
 
 
-class ContentMixin(ReadonlyFieldsMixin, models.Model):
-    trust = models.ForeignKey('trusts.Trust', related_name='content', null=False, blank=False)
+class Junction(ReadonlyFieldsMixin, models.Model):
+    trust = models.ForeignKey('trusts.Trust', null=False, blank=False)
+    _readonly_fields = ('trust',)
+    _junctions = dict()
+
+    class Meta:
+        abstract = True
+        default_permissions = ()
+
+    @classmethod
+    def register_junction(cls, content_klass, junction_klass):
+        cls._junctions[content_klass] = junction_klass
+        Content.register_content(content_klass, 'path')
+
+    @classmethod
+    def get_content_model(cls):
+        # introspect for the content model class with the easy case
+        content_model_fields = [f for f in cls._meta.fields if f.rel is not None and f.name != 'trust']
+        if len(content_model_fields) == 1:
+            return content_model_fields[0].rel.to
+
+        raise NotImplementedError('Juctnion\'s classmethod "get_content_model" is not implemented.')
+
+    @classmethod
+    def get_junction_model(cls, klass):
+        return cls._junctions[klass]
+
+    @classmethod
+    def is_junction_content_model(cls, klass):
+        if klass in cls._junctions:
+            return True
+        return False
+
+
+class ContentMixin(Content):
+    trust = models.ForeignKey('trusts.Trust', null=False, blank=False)
     _readonly_fields = ('trust',)
 
     class Meta:
@@ -158,9 +198,12 @@ class ContentMixin(ReadonlyFieldsMixin, models.Model):
         default_permissions = ('add', 'change', 'delete', 'read',)
 
 
-class Junction(ReadonlyFieldsMixin, models.Model):
-    trust = models.ForeignKey('trusts.Trust', null=False, blank=False)
-    _readonly_fields = ('trust',)
+def register_content_junction(sender, **kwargs):
+    if issubclass(sender, Junction):
+        content_model = sender.get_content_model()
+        Junction.register_junction(content_model, sender)
+    elif issubclass(sender, Content):
+        Content.register_content(sender)
+signals.class_prepared.connect(register_content_junction)
 
-    class Meta:
-        abstract = True
+
