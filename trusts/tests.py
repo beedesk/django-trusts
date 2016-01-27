@@ -311,7 +311,7 @@ class TrustContentMixin(object):
         self.assertIsIterable(perm)
         self.assertEqual(len(perm), 0)
 
-        trust = Trust.objects.get_by_content(self.user)
+        trust = Trust.objects.filter_by_content(self.user)
         self.assertIsNone(trust)
 
     def test_user_not_in_group_has_no_perm(self):

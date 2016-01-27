@@ -21,7 +21,7 @@ class TrustModelBackendMixin(object):
         if not Content.is_content(obj):
             return []
 
-        trusts = Trust.objects.get_by_content(obj)
+        trusts = Trust.objects.filter_by_content(obj)
         if trusts is None:
             return []
 

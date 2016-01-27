@@ -34,7 +34,7 @@ class TrustManager(models.Manager):
     def get_root(self):
         return self.get(pk=ROOT_PK)
 
-    def get_by_content(self, obj):
+    def filter_by_content(self, obj):
         if isinstance(obj, models.QuerySet):
             klass = obj.model
             is_qs = True
@@ -53,8 +53,7 @@ class TrustManager(models.Manager):
                 related = obj
 
             if is_qs:
-                values = Trust.objects.filter(pk__in=related.values_list('trust', flat=True)).distinct()
-                return values
+                return self.filter(pk__in=related.values_list('trust', flat=True)).distinct()
             else:
                 if related is not None:
                     return getattr(related, 'trust')
@@ -94,24 +93,24 @@ class Content(ReadonlyFieldsMixin, models.Model):
     class Meta:
         abstract = True
 
-    @classmethod
-    def register_content(cls, klass, path=None):
+    @staticmethod
+    def register_content(klass, path=None):
         if path is None:
             content_model_fields = [f for f in klass._meta.fields if f.rel is not None and f.name == 'trust']
             if len(content_model_fields) != 1:
                 raise AttributeError('Expect "trust" field in model %s.' % klass)
 
-        cls._contents.add(klass)
+        Content._contents.add(klass)
 
-    @classmethod
-    def is_content_model(cls, klass):
-        if klass in cls._contents:
+    @staticmethod
+    def is_content_model(klass):
+        if klass in Content._contents:
             return True
 
         return False
 
-    @classmethod
-    def is_content(cls, obj):
+    @staticmethod
+    def is_content(obj):
         if isinstance(obj, models.QuerySet):
             klass = obj.model
             is_qs = True
@@ -119,7 +118,7 @@ class Content(ReadonlyFieldsMixin, models.Model):
             klass = obj.__class__
             is_qs = False
 
-        return cls.is_content_model(klass)
+        return Content.is_content_model(klass)
 
 
 class Trust(Content):
@@ -164,10 +163,20 @@ class Junction(ReadonlyFieldsMixin, models.Model):
         abstract = True
         default_permissions = ()
 
-    @classmethod
-    def register_junction(cls, content_klass, junction_klass):
-        cls._junctions[content_klass] = junction_klass
+    @staticmethod
+    def register_junction(content_klass, junction_klass):
+        Junction._junctions[content_klass] = junction_klass
         Content.register_content(content_klass, 'path')
+
+    @staticmethod
+    def get_junction_model(klass):
+        return Junction._junctions[klass]
+
+    @staticmethod
+    def is_junction_content_model(klass):
+        if klass in Junction._junctions:
+            return True
+        return False
 
     @classmethod
     def get_content_model(cls):
@@ -177,16 +186,6 @@ class Junction(ReadonlyFieldsMixin, models.Model):
             return content_model_fields[0].rel.to
 
         raise NotImplementedError('Juctnion\'s classmethod "get_content_model" is not implemented.')
-
-    @classmethod
-    def get_junction_model(cls, klass):
-        return cls._junctions[klass]
-
-    @classmethod
-    def is_junction_content_model(cls, klass):
-        if klass in cls._junctions:
-            return True
-        return False
 
 
 class ContentMixin(Content):
