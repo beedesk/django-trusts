@@ -164,27 +164,16 @@ class Junction(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', related_name='%(app_label)s_%(class)s',
                 null=False, blank=False)
     _readonly_fields = ('trust',)
-    _junctions = dict()
 
     class Meta:
         abstract = True
         default_permissions = ()
 
     @staticmethod
-    def register_junction(content_klass, junction_klass):
-        Junction._junctions[content_klass] = junction_klass
-        fieldlookup = '%(applabel)s_%(model)s__content' % utils.get_applabel_model(junction_klass)
-        Content.register_content(content_klass, fieldlookup)
-
-    @staticmethod
-    def get_junction_model(klass):
-        return Junction._junctions[klass]
-
-    @staticmethod
-    def is_junction_content_model(klass):
-        if klass in Junction._junctions:
-            return True
-        return False
+    def register_junction(klass, content_model=None):
+        if content_model is None:
+            content_model = klass.get_content_model()
+        Content.register_content(content_model, klass.get_fieldlookup())
 
     @classmethod
     def get_content_model(cls):
@@ -192,14 +181,16 @@ class Junction(ReadonlyFieldsMixin, models.Model):
         content_model_fields = [f for f in cls._meta.fields if f.rel is not None and f.name != 'trust']
         if len(content_model_fields) == 1:
             return content_model_fields[0].rel.to
-
         raise NotImplementedError('Juctnion\'s classmethod "get_content_model" is not implemented.')
+
+    @classmethod
+    def get_fieldlookup(cls):
+        return '%(applabel)s_%(model)s__content' % utils.get_applabel_model(cls)
 
 
 def register_content_junction(sender, **kwargs):
     if issubclass(sender, Junction):
-        content_model = sender.get_content_model()
-        Junction.register_junction(content_model, sender)
+        Junction.register_junction(sender)
     elif issubclass(sender, Content):
         Content.register_content(sender)
 signals.class_prepared.connect(register_content_junction)
