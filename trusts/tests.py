@@ -26,7 +26,7 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, TrustUserPermission, TrustManager, Content, ContentMixin, Junction
+from trusts.models import Trust, TrustUserPermission, TrustManager, Content, Junction
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -254,7 +254,7 @@ class RuntimeModel(object):
         super(RuntimeModel, self).tearDown()
 
 
-class TrustContentMixin(object):
+class TrustContentTestMixin(object):
     def reload_test_users(self):
         # reloading user to purge the _trust_perm_cache
         self.user_root = User._default_manager.get(pk=self.user_root.pk)
@@ -283,7 +283,7 @@ class TrustContentMixin(object):
             )
 
     def setUp(self):
-        super(TrustContentMixin, self).setUp()
+        super(TrustContentTestMixin, self).setUp()
 
         get_or_create_root_user(self)
 
@@ -311,8 +311,8 @@ class TrustContentMixin(object):
         self.assertIsIterable(perm)
         self.assertEqual(len(perm), 0)
 
-        trust = Trust.objects.filter_by_content(self.user)
-        self.assertIsNone(trust)
+        trusts = Trust.objects.filter_by_content(self.user)
+        self.assertEqual(trusts.count(), 0)
 
     def test_user_not_in_group_has_no_perm(self):
         self.trust = Trust(settlor=self.user, trust=Trust.objects.get_root(), title='trust 1')
@@ -448,11 +448,11 @@ class TrustContentMixin(object):
         ))
 
 
-class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase):
+class ContentTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
     contents = []
 
     def setUp(self):
-        mixin = ContentMixin
+        mixin = Content
 
         # Create a dummy model which extends the mixin
         self.model = ModelBase('TestModel' + mixin.__name__, (mixin,),
@@ -460,7 +460,7 @@ class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTest
         self.model.id = models.AutoField(primary_key=True)
         self.content_model = self.model
 
-        super(ContentMixinTrustTestCase, self).setUp()
+        super(ContentTestCase, self).setUp()
 
     def create_content(self, trust):
         content = self.model(trust=trust)
@@ -471,7 +471,7 @@ class ContentMixinTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTest
         return content
 
 
-class JunctionTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase):
+class JunctionTrustTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
     class TestMixin(models.Model):
         content = models.ForeignKey(Group, unique=True, null=False, blank=False)
         name = models.CharField(max_length=40, null=False, blank=False)
@@ -505,7 +505,7 @@ class JunctionTrustTestCase(TrustContentMixin, RuntimeModel, TransactionTestCase
         super(JunctionTrustTestCase, self).test_read_permissions_added()
 
 
-class TrustAsContentTestCase(TrustContentMixin, TestCase):
+class TrustAsContentTestCase(TrustContentTestMixin, TestCase):
     serialized_rollback = True
     count = 0
 

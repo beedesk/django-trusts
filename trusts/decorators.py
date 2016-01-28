@@ -45,14 +45,12 @@ def _collect_args(fieldlookups, args):
 
     if not fieldlookups:
         return results
-    if not args:
-        return fieldlookups
 
     for lookup, arg_name in fieldlookups.iteritems():
         if arg_name in args:
             results[lookup] = args[arg_name]
         else:
-            results[lookup] = arg_name
+            results[lookup] = None
 
     return results
 
@@ -61,16 +59,16 @@ def _get_permissible_items(request, applabel__action_modelname, fieldlookups):
         return None
 
     applabel, action_modelname = applabel__action_modelname.split('.', 1)
-    action, modelname = action_modelname.split('_', 1)
+    action, modelname = action_modelname.rsplit('_', 1)
     try:
         ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
 
         return ctype.model_class().objects.filter(**fieldlookups)
     except ObjectDoesNotExist:
-        raise ValueError("Permission code must be of the form 'app_label.action_modelname'.")
+        raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % applabel__action_modelname)
 
 
-def permission_required(perm, or_404=False, raise_exception=True, login_url=None,
+def permission_required(perm, raise_exception=True, login_url=None,
         fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
     '''
     Decorator for views that checks whether a user has a particular permission
@@ -98,7 +96,9 @@ def permission_required(perm, or_404=False, raise_exception=True, login_url=None
         if fieldlookups is not None:
             items = _get_permissible_items(request, perm, fieldlookups)
             if items is None:
-                raise Http404
+                if raise_exception:
+                    raise Http404
+                return False
 
         if request.user.has_perms(perms, items):
             return True
