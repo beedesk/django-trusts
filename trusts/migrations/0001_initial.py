@@ -5,7 +5,7 @@ from django.db import migrations, models
 from django.conf import settings
 from django.core.management import call_command
 
-from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, DEFAULT_SETTLOR
+from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, DEFAULT_SETTLOR, ROOT_PK
 import trusts.models
 
 
@@ -25,11 +25,11 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Trust',
             fields=[
-                ('id', models.AutoField(serialize=False, primary_key=True)),
+                ('id', models.AutoField(verbose_name='ID', auto_created=True, primary_key=True, serialize=False)),
                 ('title', models.CharField(verbose_name='title', max_length=40)),
                 ('groups', models.ManyToManyField(blank=True, related_name='trusts', verbose_name='groups', to='auth.Group', help_text='The groups this trust grants permissions to. A user willget all permissions granted to each of his/her group.')),
                 ('settlor', models.ForeignKey(to=ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR)),
-                ('trust', models.ForeignKey(to='trusts.Trust', related_name='content', default=1)),
+                ('trust', models.ForeignKey(to='trusts.Trust', related_name='trusts_trust_content', default=ROOT_PK)),
             ],
             options={
                 'default_permissions': ('add', 'change', 'delete', 'read'),

@@ -10,10 +10,8 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
 from django.contrib.contenttypes.models import ContentType
 
-from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR, utils
+from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR, ROOT_PK, utils
 
-
-ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
 
 class TrustManager(models.Manager):
     def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
@@ -129,7 +127,6 @@ class Content(ReadonlyFieldsMixin, models.Model):
 
 
 class Trust(Content):
-    id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
     settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=False, blank=False)
     groups = models.ManyToManyField(GROUP_MODEL_NAME,
@@ -162,7 +159,7 @@ class TrustUserPermission(models.Model):
 
 class Junction(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', related_name='%(app_label)s_%(class)s',
-                null=False, blank=False)
+                default=ROOT_PK, null=False, blank=False)
     _readonly_fields = ('trust',)
 
     class Meta:
@@ -171,9 +168,7 @@ class Junction(ReadonlyFieldsMixin, models.Model):
 
     @staticmethod
     def register_junction(klass, content_model=None):
-        if content_model is None:
-            content_model = klass.get_content_model()
-        Content.register_content(content_model, klass.get_fieldlookup())
+        Content.register_content(klass.get_content_model(), klass.get_fieldlookup())
 
     @classmethod
     def get_content_model(cls):
