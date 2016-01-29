@@ -2,16 +2,21 @@
 from __future__ import unicode_literals
 
 import six
+from django.db.models import Model
 
 def get_short_model_name_lower(klass):
     if isinstance(klass, six.string_types):
         return klass.lower()
-    return '%s.%s' % (klass._meta.app_label.lower(), klass._meta.model_name)
+    if issubclass(klass, Model):
+        return '%s.%s' % (klass._meta.app_label.lower(), klass._meta.model_name)
+    return ''
 
 def get_short_model_name(klass):
     if isinstance(klass, six.string_types):
         return klass
-    return '%s.%s' % (klass._meta.app_label, klass._meta.object_name)
+    if issubclass(klass, Model):
+        return '%s.%s' % (klass._meta.app_label, klass._meta.object_name)
+    return ''
 
 def parse_perm_code(perm):
     applabel, action_modelname_permcode = perm.split('.', 1)

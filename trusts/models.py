@@ -49,7 +49,7 @@ class TrustManager(models.Manager):
         if Content.is_content_model(klass):
             fieldlookup = Content.get_content_fieldlookup(klass)
             if fieldlookup is None:
-                fieldlookup = '%s_content' % utils.get_short_model_name_lower(cls).replace('.', '_')
+                fieldlookup = '%s_content' % utils.get_short_model_name_lower(klass).replace('.', '_')
 
             filters = {}
             if is_qs:
@@ -192,6 +192,7 @@ class Junction(ReadonlyFieldsMixin, models.Model):
         abstract = True
         default_permissions = ()
         content_permission_conditions = ()
+        unique_together = ('content', )
 
     @staticmethod
     def register_junction(klass, content_model=None):
