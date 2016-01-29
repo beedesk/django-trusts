@@ -68,6 +68,17 @@ def _get_permissible_items(request, applabel__action_modelname, fieldlookups):
         raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % applabel__action_modelname)
 
 
+def _resolve_fieldlookups(request, view_kwargs,
+        fieldlookups_kwargs, fieldlookups_getparams, fieldlookups_postparams):
+    fieldlookups = None
+    if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
+        fieldlookups = {}
+        fieldlookups.update(_collect_args(fieldlookups_kwargs, view_kwargs))
+        fieldlookups.update(_collect_args(fieldlookups_getparams, request.GET))
+        fieldlookups.update(_collect_args(fieldlookups_postparams, request.POST))
+    return fieldlookups
+
+
 def permission_required(perm, raise_exception=True, login_url=None,
         fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
     '''
@@ -85,12 +96,11 @@ def permission_required(perm, raise_exception=True, login_url=None,
         else:
             perms = perm
 
-        fieldlookups = None
-        if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
-            fieldlookups = {}
-            fieldlookups.update(_collect_args(fieldlookups_kwargs, kwargs))
-            fieldlookups.update(_collect_args(fieldlookups_getparams, request.GET))
-            fieldlookups.update(_collect_args(fieldlookups_postparams, request.POST))
+        fieldlookups = _resolve_fieldlookups(request, kwargs,
+            fieldlookups_kwargs=fieldlookups_kwargs,
+            fieldlookups_getparams=fieldlookups_getparams,
+            fieldlookups_postparams=fieldlookups_postparams
+        )
 
         items = None
         if fieldlookups is not None:

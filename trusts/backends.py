@@ -17,7 +17,16 @@ class TrustModelBackendMixin(object):
             perm.content_type.app_label, perm.codename
         )
 
-    def _get_trusts(self, obj):
+    @staticmethod
+    def _parse_perm_code(perm):
+        applabel, action_modelname_permcode = perm.split('.', 1)
+        action, modelname_permcode = action_modelname_permcode.rsplit('_', 1)
+        modelname, sep, cond = modelname_permcode.partition(':')
+
+        return applabel, modelname, action, cond
+
+    @staticmethod
+    def _get_trusts(obj):
         if not Content.is_content(obj):
             return []
 
@@ -30,6 +39,14 @@ class TrustModelBackendMixin(object):
 
         return trusts
 
+    @staticmethod
+    def _get_class(obj):
+        if isinstance(obj, QuerySet):
+            klass = obj.model
+        else:
+            klass = obj.__class__
+        return klass
+
     def get_group_permissions(self, user_obj, obj=None):
         """
         Returns a set of permission strings that this user has through his/her
@@ -41,7 +58,7 @@ class TrustModelBackendMixin(object):
 
         if Content.is_content(obj):
             filter = self.perm_model.objects.filter
-            return filter(group__trusts=self._get_trusts(obj), group__user=user_obj)
+            return filter(group__trusts__in=self._get_trusts(obj), group__user=user_obj)
 
         return []
 
@@ -73,6 +90,23 @@ class TrustModelBackendMixin(object):
                 all_perms.append(trust_perm)
             return set.intersection(*all_perms)
         return []
+
+    def has_perm(self, user_obj, permext, obj=None):
+        applabel, modelname, action, cond = self._parse_perm_code(permext)
+        if len(cond) != 0:
+            func = Content.get_permission_condition_func(self._get_class(obj), cond)
+            if func is None:
+                raise AttributeError('Permission condition code "%s" is not associate with model "%s_%s"' % (cond, applabel, modelname))
+
+        perm = '%s.%s_%s' % (applabel, action, modelname)
+        positive = super(TrustModelBackendMixin, self).has_perm(user_obj=user_obj, perm=perm, obj=obj)
+        if positive:
+            if len(cond) == 0:
+                return True
+
+            if func and func(user_obj, perm, obj):
+                return True
+        return False
 
 
 class TrustModelBackend(TrustModelBackendMixin, ModelBackend):

@@ -401,7 +401,7 @@ class TrustContentTestMixin(object):
     def test_has_perm_disallow_no_perm_perm(self):
         self.test_has_perm()
 
-        had = self.user.has_perm(self.perm_add, self.content)
+        had = self.user.has_perm(self.get_perm_code(self.perm_add), self.content)
         self.assertFalse(had)
 
     def test_get_or_create_default_trust(self):

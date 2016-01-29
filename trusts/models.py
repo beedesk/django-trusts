@@ -3,15 +3,17 @@ from __future__ import unicode_literals
 
 from datetime import datetime
 
-from django.db import models
-from django.db.models import signals, Q
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.utils.translation import ugettext_lazy as _
+from django.db import models
+from django.db.models import signals, Q, options
 from django.contrib.contenttypes.models import ContentType
+from django.utils.translation import ugettext_lazy as _
 
 from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR, ROOT_PK, utils
 
+
+options.DEFAULT_NAMES += ('permission_conditions', 'content_permission_conditions')
 
 class TrustManager(models.Manager):
     def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
@@ -90,10 +92,18 @@ class Content(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', related_name='%(app_label)s_%(class)s_content',
                 default=ROOT_PK, null=False, blank=False)
     _contents = {}
+    _conditions = {}
 
     class Meta:
         abstract = True
         default_permissions = ('add', 'change', 'delete', 'read',)
+        permission_conditions = ()
+
+    @staticmethod
+    def register_permission_condition(klass, cond_code, func):
+        if klass not in Content._conditions:
+            Content._conditions[klass] = {}
+        Content._conditions[klass][cond_code] = func
 
     @staticmethod
     def register_content(klass, fieldlookup=None):
@@ -102,6 +112,10 @@ class Content(ReadonlyFieldsMixin, models.Model):
             if len(content_model_fields) != 1:
                 raise AttributeError('Expect "trust" field in model %s.' % klass)
         Content._contents[klass] = fieldlookup
+
+        if hasattr(klass._meta, 'permission_conditions'):
+            for permcond, func in klass._meta.permission_conditions:
+                Content.register_permission_condition(klass, permcond, func)
 
     @staticmethod
     def is_content_model(klass):
@@ -125,6 +139,12 @@ class Content(ReadonlyFieldsMixin, models.Model):
             is_qs = False
         return Content.is_content_model(klass)
 
+    @staticmethod
+    def get_permission_condition_func(klass, cond_code):
+        if klass in Content._conditions:
+            if cond_code in Content._conditions[klass]:
+                return Content._conditions[klass][code_code]
+        return None
 
 class Trust(Content):
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
@@ -141,6 +161,7 @@ class Trust(Content):
     class Meta:
         unique_together = ('settlor', 'title')
         default_permissions = ('add', 'change', 'delete', 'read',)
+        permission_conditions = (('own', lambda u, p, o: u == o.settlor), )
 
     def __str__(self):
         settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
@@ -165,10 +186,14 @@ class Junction(ReadonlyFieldsMixin, models.Model):
     class Meta:
         abstract = True
         default_permissions = ()
+        content_permission_conditions = ()
 
     @staticmethod
     def register_junction(klass, content_model=None):
         Content.register_content(klass.get_content_model(), klass.get_fieldlookup())
+        if hasattr(klass._meta, 'content_permission_conditions'):
+            for permcond, func in klass._meta.content_permission_conditions:
+                Content.register_permission_condition(klass, permcond, func)
 
     @classmethod
     def get_content_model(cls):
