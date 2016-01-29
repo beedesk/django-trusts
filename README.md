@@ -110,6 +110,19 @@ def give_user_change_permission_on_existing_group(request, user, group_name):
     # request.user.has_perm('auth.change_group', group) ==> True
 ```
 
+##### Inheritance
+
+Dependent model can inherit Trust from a related model. Such class need to be registered manually
+with `fieldlookup` specified.
+
+Consider ReceiptImage is a dependent model of Receipt, and ReceiptImageMeta is a dependent
+model of ReceiptImage. The following code makes both model available for permission checking.
+
+```python
+Content.register_content(ReceiptImage, '%s__image' % Content.get_content_fieldlookup('app.Receipt'))
+Content.register_content(ReceiptImageMeta, '%s__image' % Content.get_content_fieldlookup(ReceiptImage))
+```
+
 ##### Permissions Checking
 
 ```python
@@ -120,7 +133,7 @@ def check_permission_to_a_specific_group(request, group_id):
   return request.user.has_perm('app.change_group', Group.objects.get(id=group_id))
 ```
 
-##### Use decorators
+##### Decorators
 
 ```python
 from trusts.decorators import permission_required
@@ -137,6 +150,33 @@ def move_xyz_to_project_view(request, xyz_id, project_id):
   # ...
   pass
 
+```
+
+##### Permission Conditions
+
+In additional `Group` and `Permission` based check, object level condition can be used.
+
+For example, a user should be let to modify a `Receipt` if he was the creation owner. In
+this case, a condition code should be registered.
+
+```python
+Content.register_permission_condition(Receipt, 'own', lambda u, p, o: u == o.user)
+```
+
+To check `own` permission, a colon and the condition name should be added after the condition name:
+
+```python
+def check_permission_to_a_specific_receipt(request, receipt_id):
+  return request.user.has_perm('app.change_receipt:own', Receipt.objects.get(id=receipt_id))
+```
+
+Condition can also be used with decorator as follow:
+
+```python
+@permission_required('app.change_receipt:own', fieldlookups_kwargs={'pk': 'pk'})
+def edit_receipt_view(request, pk):
+  # ...
+  pass
 ```
 
 ##### Customization
