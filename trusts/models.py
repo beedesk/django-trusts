@@ -49,7 +49,7 @@ class TrustManager(models.Manager):
         if Content.is_content_model(klass):
             fieldlookup = Content.get_content_fieldlookup(klass)
             if fieldlookup is None:
-                fieldlookup = '%(applabel)s_%(model)s_content' % utils.get_applabel_model(klass)
+                fieldlookup = '%s_content' % utils.get_short_model_name_lower(cls).replace('.', '_')
 
             filters = {}
             if is_qs:
@@ -101,17 +101,19 @@ class Content(ReadonlyFieldsMixin, models.Model):
 
     @staticmethod
     def register_permission_condition(klass, cond_code, func):
-        if klass not in Content._conditions:
-            Content._conditions[klass] = {}
-        Content._conditions[klass][cond_code] = func
+        short_name = utils.get_short_model_name(klass)
+        if short_name not in Content._conditions:
+            Content._conditions[short_name] = {}
+        Content._conditions[short_name][cond_code] = func
 
     @staticmethod
     def register_content(klass, fieldlookup=None):
         if fieldlookup is None:
             content_model_fields = [f for f in klass._meta.fields if f.rel is not None and f.name == 'trust']
             if len(content_model_fields) != 1:
-                raise AttributeError('Expect "trust" field in model %s.' % klass)
-        Content._contents[klass] = fieldlookup
+                raise AttributeError('Expect "trust" field in model %s.' % short_name)
+        short_name = utils.get_short_model_name(klass)
+        Content._contents[short_name] = fieldlookup
 
         if hasattr(klass._meta, 'permission_conditions'):
             for permcond, func in klass._meta.permission_conditions:
@@ -119,14 +121,16 @@ class Content(ReadonlyFieldsMixin, models.Model):
 
     @staticmethod
     def is_content_model(klass):
-        if klass in Content._contents.keys():
+        short_name = utils.get_short_model_name(klass)
+        if short_name in Content._contents.keys():
             return True
         return False
 
     @staticmethod
     def get_content_fieldlookup(klass):
-        if klass in Content._contents.keys():
-            return Content._contents[klass]
+        short_name = utils.get_short_model_name(klass)
+        if short_name in Content._contents.keys():
+            return Content._contents[short_name]
         return None
 
     @staticmethod
@@ -141,9 +145,10 @@ class Content(ReadonlyFieldsMixin, models.Model):
 
     @staticmethod
     def get_permission_condition_func(klass, cond_code):
-        if klass in Content._conditions:
-            if cond_code in Content._conditions[klass]:
-                return Content._conditions[klass][code_code]
+        short_name = utils.get_short_model_name(klass)
+        if short_name in Content._conditions:
+            if cond_code in Content._conditions[short_name]:
+                return Content._conditions[short_name][cond_code]
         return None
 
 class Trust(Content):
@@ -205,7 +210,7 @@ class Junction(ReadonlyFieldsMixin, models.Model):
 
     @classmethod
     def get_fieldlookup(cls):
-        return '%(applabel)s_%(model)s__content' % utils.get_applabel_model(cls)
+        return '%s__content' % utils.get_short_model_name_lower(cls).replace('.', '_')
 
 
 def register_content_junction(sender, **kwargs):
@@ -214,5 +219,3 @@ def register_content_junction(sender, **kwargs):
     elif issubclass(sender, Content):
         Content.register_content(sender)
 signals.class_prepared.connect(register_content_junction)
-
-

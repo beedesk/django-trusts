@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 
 from trusts.models import Trust, Content
-from trusts import get_permission_model
+from trusts import get_permission_model, utils
 
 
 class TrustModelBackendMixin(object):
@@ -16,14 +16,6 @@ class TrustModelBackendMixin(object):
         return '%s.%s' % (
             perm.content_type.app_label, perm.codename
         )
-
-    @staticmethod
-    def _parse_perm_code(perm):
-        applabel, action_modelname_permcode = perm.split('.', 1)
-        action, modelname_permcode = action_modelname_permcode.rsplit('_', 1)
-        modelname, sep, cond = modelname_permcode.partition(':')
-
-        return applabel, modelname, action, cond
 
     @staticmethod
     def _get_trusts(obj):
@@ -91,8 +83,18 @@ class TrustModelBackendMixin(object):
             return set.intersection(*all_perms)
         return []
 
+    def permission_condition_met(self, func, user_obj, perm, obj):
+        if isinstance(obj, QuerySet):
+            objs = obj.all()
+        elif hasattr(trusts, '__iter__'):
+            objs = obj
+        else:
+            objs = [obj]
+
+        return all([func(user_obj, perm, o) for o in objs])
+
     def has_perm(self, user_obj, permext, obj=None):
-        applabel, modelname, action, cond = self._parse_perm_code(permext)
+        applabel, modelname, action, cond = utils.parse_perm_code(permext)
         if len(cond) != 0:
             func = Content.get_permission_condition_func(self._get_class(obj), cond)
             if func is None:
@@ -104,7 +106,7 @@ class TrustModelBackendMixin(object):
             if len(cond) == 0:
                 return True
 
-            if func and func(user_obj, perm, obj):
+            if self.permission_condition_met(func, user_obj, perm, obj):
                 return True
         return False
 

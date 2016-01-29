@@ -9,6 +9,8 @@ from django.utils.decorators import available_attrs
 from django.utils.six.moves.urllib.parse import urlparse
 from django.http import Http404
 
+from trusts import utils
+
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
     '''
@@ -54,18 +56,17 @@ def _collect_args(fieldlookups, args):
 
     return results
 
-def _get_permissible_items(request, applabel__action_modelname, fieldlookups):
+def _get_permissible_items(request, permext, fieldlookups):
     if fieldlookups is None:
         return None
 
-    applabel, action_modelname = applabel__action_modelname.split('.', 1)
-    action, modelname = action_modelname.rsplit('_', 1)
+    applabel, modelname, action, cond = utils.parse_perm_code(permext)
     try:
         ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
 
         return ctype.model_class().objects.filter(**fieldlookups)
     except ObjectDoesNotExist:
-        raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % applabel__action_modelname)
+        raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % permext)
 
 
 def _resolve_fieldlookups(request, view_kwargs,
