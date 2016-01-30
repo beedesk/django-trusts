@@ -1,0 +1,5 @@
+recursive-include trusts *
+include LICENSE
+include README.md
+include requirements.txt
+
