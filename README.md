@@ -19,4 +19,4 @@ A `trust` is a relationship whereby content access is permitted by the creator [
 ---
 
 
-Read more: https://readthedocs.org/projects/django-trusts/
+Read more: http://django-trusts.readthedocs.org/en/latest/
