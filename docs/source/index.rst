@@ -210,5 +210,6 @@ Initial Options
 * TRUSTS_CREATE_ROOT -- A boolean set to True indicates root Trust model object to be created during the initial migration. (default: True)
 * TRUSTS_ROOT_PK -- The `pk` of the root trust model object. (default: 1)
 * TRUSTS_ROOT_SETTLOR -- The `pk` of settlor of the root trust object. (default: None)
+* TRUSTS_ALLOW_NULL_SETTLOR -- A boolean set to True indicates Trust.settlor field can be null. (default: TRUSTS_DEFAULT_SETTLOR == None)
 * TRUSTS_DEFAULT_SETTLOR -- The default value for `settlor` field on Trust model. (default: None)
 * TRUSTS_ROOT_TITLE -- The title of root rust object. (default: "In Trust We Trust")
