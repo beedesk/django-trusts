@@ -5,10 +5,6 @@ from __future__ import unicode_literals
 from django.core.management.base import BaseCommand
 from django.conf import settings
 
-from tastypie.compat import get_user_model
-from tastypie.models import ApiKey
-
-
 def create_root_trust(Trust, pk, settlor, title):
     kwargs = {'id': pk, 'title': title}
     if settlor is not None:

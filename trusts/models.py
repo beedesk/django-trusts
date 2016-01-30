@@ -10,7 +10,8 @@ from django.db.models import signals, Q, options
 from django.contrib.contenttypes.models import ContentType
 from django.utils.translation import ugettext_lazy as _
 
-from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, DEFAULT_SETTLOR, ROOT_PK, utils
+from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, \
+                    DEFAULT_SETTLOR, ALLOW_NULL_SETTLOR, ROOT_PK, utils
 
 
 options.DEFAULT_NAMES += ('permission_conditions', 'content_permission_conditions')
@@ -153,7 +154,7 @@ class Content(ReadonlyFieldsMixin, models.Model):
 
 class Trust(Content):
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
-    settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=False, blank=False)
+    settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=ALLOW_NULL_SETTLOR, blank=False)
     groups = models.ManyToManyField(GROUP_MODEL_NAME,
                 related_name='trusts', blank=True, verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'

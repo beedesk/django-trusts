@@ -15,6 +15,8 @@ PERMISSION_MODEL_NAME = getattr(settings, 'TRUSTS_PERMISSION_MODEL', 'auth.Permi
 
 DEFAULT_SETTLOR = getattr(settings, 'TRUSTS_DEFAULT_SETTLOR', None)
 
+ALLOW_NULL_SETTLOR = getattr(settings, 'TRUSTS_ALLOW_NULL_SETTLOR', DEFAULT_SETTLOR == None)
+
 ROOT_PK = getattr(settings, 'TRUSTS_ROOT_PK', 1)
 
 def get_entity_model():
