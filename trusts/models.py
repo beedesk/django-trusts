@@ -15,7 +15,7 @@ from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, \
 
 
 options.DEFAULT_NAMES += ('roles', 'permission_conditions',
-            'content_roles', 'content_permission_conditions'
+                          'content_roles', 'content_permission_conditions'
     )
 
 class TrustManager(models.Manager):
@@ -158,7 +158,7 @@ class Content(ReadonlyFieldsMixin, models.Model):
 class Trust(Content):
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
     settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=ALLOW_NULL_SETTLOR, blank=False)
-    groups = models.ManyToManyField(GROUP_MODEL_NAME, through='trusts.TrustGroup', related_name='trusts',
+    groups = models.ManyToManyField(GROUP_MODEL_NAME, related_name='trusts',
                 verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'
                             'get all permissions granted to each of his/her group.'),
@@ -178,13 +178,18 @@ class Trust(Content):
 Content.register_content(Trust)
 
 
-class TrustGroup(models.Model):
-    trust = models.ForeignKey('trusts.Trust', related_name='trustgroups', null=False, blank=False)
-    group = models.ForeignKey(GROUP_MODEL_NAME, related_name='trustgroups', null=False, blank=False)
-    role = models.CharField(max_length=16, null=False, blank=False, verbose_name=_('The kind of access. Corresponds to the key of model\'s trusts option.'))
+class Role(models.Model):
+    name = models.CharField(max_length=80, null=False, blank=False, unique=True,
+                help_text=_('The name of the role. Corresponds to the key of model\'s trusts option.'))
+    groups = models.ManyToManyField(GROUP_MODEL_NAME, related_name='roles', null=False, blank=False,
+                verbose_name=_('groups')
+            )
+    permissions = models.ManyToManyField(PERMISSION_MODEL_NAME, related_name='roles', null=False, blank=False,
+                verbose_name=_('permissions')
+            )
 
     class Meta:
-        unique_together = ('trust', 'group', 'role')
+        pass
 
 
 class TrustUserPermission(models.Model):

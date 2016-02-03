@@ -31,20 +31,12 @@ class Migration(migrations.Migration):
                 ('title', models.CharField(verbose_name='title', max_length=40)),
                 ('settlor', models.ForeignKey(to=ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=ALLOW_NULL_SETTLOR)),
                 ('trust', models.ForeignKey(to='trusts.Trust', related_name='trusts_trust_content', default=ROOT_PK)),
+                ('groups', models.ManyToManyField(to=GROUP_MODEL_NAME, related_name='trusts', verbose_name='groups', help_text='The groups this trust grants permissions to. A user willget all permissions granted to each of his/her group.')),
             ],
             options={
                 'default_permissions': ('add', 'change', 'delete', 'read'),
             },
             bases=(trusts.models.ReadonlyFieldsMixin, models.Model),
-        ),
-        migrations.CreateModel(
-            name='TrustGroup',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', primary_key=True, serialize=False, auto_created=True)),
-                ('trust', models.ForeignKey(to='trusts.Trust', related_name='trustgroups')),
-                ('group', models.ForeignKey(to=GROUP_MODEL_NAME, related_name='trustgroups')),
-                ('role', models.CharField(max_length=16, verbose_name="The kind of access. Corresponds to the key of model's trusts option.")),
-            ],
         ),
         migrations.CreateModel(
             name='TrustUserPermission',
@@ -55,10 +47,14 @@ class Migration(migrations.Migration):
                 ('trust', models.ForeignKey(to='trusts.Trust', related_name='trustees')),
             ],
         ),
-        migrations.AddField(
-            model_name='trust',
-            name='groups',
-            field=models.ManyToManyField(to=GROUP_MODEL_NAME, through='trusts.TrustGroup', related_name='trusts', verbose_name='groups', help_text='The groups this trust grants permissions to. A user willget all permissions granted to each of his/her group.'),
+        migrations.CreateModel(
+            name='Role',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=80, unique=True, help_text="The name of the role. Corresponds to the key of model's trusts option.")),
+                ('groups', models.ManyToManyField(related_name='roles', verbose_name='groups', to='auth.Group')),
+                ('permissions', models.ManyToManyField(related_name='roles', verbose_name='permissions', to='auth.Permission')),
+            ],
         ),
         migrations.AlterUniqueTogether(
             name='trust',
@@ -67,10 +63,6 @@ class Migration(migrations.Migration):
         migrations.AlterUniqueTogether(
             name='trustuserpermission',
             unique_together=set([('trust', 'entity', 'permission')]),
-        ),
-        migrations.AlterUniqueTogether(
-            name='trustgroup',
-            unique_together=set([('trust', 'group', 'role')]),
         ),
         migrations.RunPython(forward, backward)
     ]

@@ -26,7 +26,7 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, TrustGroup, TrustUserPermission, TrustManager, Content, Junction
+from trusts.models import Trust, Role, TrustUserPermission, TrustManager, Content, Junction
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -127,8 +127,7 @@ class TrustTest(TestCase):
         self.group.save()
         self.user.groups.add(self.group)
 
-        tg = TrustGroup(trust=self.trust5, group=self.group, role='test')
-        tg.save()
+        self.trust5.groups.add(self.group)
 
         self.trust6 = Trust(settlor=self.user1, title='Title 1C', trust=Trust.objects.get_root())
         self.trust6.save()
@@ -267,12 +266,6 @@ class TrustContentTestMixin(object):
         self.group = Group(name="Test Group")
         self.group.save()
 
-    def set_perms(self):
-        for codename in ['change', 'add', 'delete']:
-            setattr(self, 'perm_%s' % codename,
-                '%s.%s_%s' % (self.app_label, codename, self.model_name)
-            )
-
     def get_perm_code(self, perm):
         return '%s.%s' % (
             perm.content_type.app_label, perm.codename
@@ -358,8 +351,7 @@ class TrustContentTestMixin(object):
 
         self.reload_test_users()
 
-        tg = TrustGroup(group=self.group, trust=self.trust, role='test')
-        tg.save()
+        self.trust.groups.add(self.group)
 
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
