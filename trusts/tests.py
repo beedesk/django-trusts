@@ -26,7 +26,7 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, TrustUserPermission, TrustManager, Content, Junction
+from trusts.models import Trust, TrustGroup, TrustUserPermission, TrustManager, Content, Junction
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -126,7 +126,9 @@ class TrustTest(TestCase):
         self.group = Group(name='Group A')
         self.group.save()
         self.user.groups.add(self.group)
-        self.trust5.groups.add(self.group)
+
+        tg = TrustGroup(trust=self.trust5, group=self.group, role='test')
+        tg.save()
 
         self.trust6 = Trust(settlor=self.user1, title='Title 1C', trust=Trust.objects.get_root())
         self.trust6.save()
@@ -356,7 +358,8 @@ class TrustContentTestMixin(object):
 
         self.reload_test_users()
 
-        self.trust.groups.add(self.group)
+        tg = TrustGroup(group=self.group, trust=self.trust, role='test')
+        tg.save()
 
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)

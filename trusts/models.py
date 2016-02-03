@@ -14,7 +14,9 @@ from trusts import ENTITY_MODEL_NAME, PERMISSION_MODEL_NAME, GROUP_MODEL_NAME, \
                     DEFAULT_SETTLOR, ALLOW_NULL_SETTLOR, ROOT_PK, utils
 
 
-options.DEFAULT_NAMES += ('permission_conditions', 'content_permission_conditions')
+options.DEFAULT_NAMES += ('roles', 'permission_conditions',
+            'content_roles', 'content_permission_conditions'
+    )
 
 class TrustManager(models.Manager):
     def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
@@ -152,11 +154,12 @@ class Content(ReadonlyFieldsMixin, models.Model):
                 return Content._conditions[short_name][cond_code]
         return None
 
+
 class Trust(Content):
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
     settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=ALLOW_NULL_SETTLOR, blank=False)
-    groups = models.ManyToManyField(GROUP_MODEL_NAME,
-                related_name='trusts', blank=True, verbose_name=_('groups'),
+    groups = models.ManyToManyField(GROUP_MODEL_NAME, through='trusts.TrustGroup', related_name='trusts',
+                verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'
                             'get all permissions granted to each of his/her group.'),
     )
@@ -173,6 +176,15 @@ class Trust(Content):
         settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
         return 'Trust[%s]: "%s"' % (self.id, self.title)
 Content.register_content(Trust)
+
+
+class TrustGroup(models.Model):
+    trust = models.ForeignKey('trusts.Trust', related_name='trustgroups', null=False, blank=False)
+    group = models.ForeignKey(GROUP_MODEL_NAME, related_name='trustgroups', null=False, blank=False)
+    role = models.CharField(max_length=16, null=False, blank=False, verbose_name=_('The kind of access. Corresponds to the key of model\'s trusts option.'))
+
+    class Meta:
+        unique_together = ('trust', 'group', 'role')
 
 
 class TrustUserPermission(models.Model):
