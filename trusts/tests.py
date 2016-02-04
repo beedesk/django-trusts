@@ -579,24 +579,24 @@ class RoleTestMixin(object):
 
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 3)
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 9)
 
         rp = Role.objects.get(name='public')
         ra = Role.objects.get(name='admin')
         rw = Role.objects.get(name='write')
 
-        self.assertEqual(rp.permissions.count(), 2)
-        self.assertEqual(ra.permissions.count(), 4)
+        self.assertEqual(rp.permissions.filter(content_type__app_label=self.app_label).count(), 2)
+        self.assertEqual(ra.permissions.filter(content_type__app_label=self.app_label).count(), 4)
 
-        ra.permissions.get(codename=self.get_perm_codename('add_topic_to'))
-        ra.permissions.get(codename=self.get_perm_codename('read'))
-        ra.permissions.get(codename=self.get_perm_codename('add'))
-        ra.permissions.get(codename=self.get_perm_codename('change'))
+        ra.permissions.filter(content_type__app_label=self.app_label).get(codename=self.get_perm_codename('add_topic_to'))
+        ra.permissions.filter(content_type__app_label=self.app_label).get(codename=self.get_perm_codename('read'))
+        ra.permissions.filter(content_type__app_label=self.app_label).get(codename=self.get_perm_codename('add'))
+        ra.permissions.filter(content_type__app_label=self.app_label).get(codename=self.get_perm_codename('change'))
 
-        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('add_topic_to')).count(), 1)
-        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('add')).count(), 0)
-        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('change')).count(), 0)
+        self.assertEqual(rp.permissions.filter(content_type__app_label=self.app_label).filter(codename=self.get_perm_codename('add_topic_to')).count(), 1)
+        self.assertEqual(rp.permissions.filter(content_type__app_label=self.app_label).filter(codename=self.get_perm_codename('add')).count(), 0)
+        self.assertEqual(rp.permissions.filter(content_type__app_label=self.app_label).filter(codename=self.get_perm_codename('change')).count(), 0)
 
         # Make change and ensure we add items
         self.append_model_roles('read', (self.get_perm_codename('read'),))
@@ -605,12 +605,12 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 4)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 10)
 
         rr = Role.objects.get(name='read')
-        self.assertEqual(rr.permissions.count(), 1)
-        self.assertEqual(rr.permissions.filter(codename=self.get_perm_codename('read')).count(), 1)
+        self.assertEqual(rr.permissions.filter(content_type__app_label=self.app_label).count(), 1)
+        self.assertEqual(rr.permissions.filter(content_type__app_label=self.app_label).filter(codename=self.get_perm_codename('read')).count(), 1)
 
         # Add
         self.remove_model_roles('write')
@@ -620,7 +620,7 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 4)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 11)
 
         # Remove
@@ -631,7 +631,7 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 4)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 9)
 
         # Remove 2
@@ -643,7 +643,7 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 3)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 7)
 
         # Run again
@@ -652,7 +652,7 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 3)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 7)
 
         # Add empty
@@ -662,7 +662,7 @@ class RoleTestMixin(object):
         rs = Role.objects.all()
         self.assertEqual(rs.count(), 4)
 
-        rp = RolePermission.objects.all()
+        rp = RolePermission.objects.filter(permission__content_type__app_label=self.app_label)
         self.assertEqual(rp.count(), 7)
 
 
