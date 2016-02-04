@@ -184,12 +184,22 @@ class Role(models.Model):
     groups = models.ManyToManyField(GROUP_MODEL_NAME, related_name='roles', null=False, blank=False,
                 verbose_name=_('groups')
             )
-    permissions = models.ManyToManyField(PERMISSION_MODEL_NAME, related_name='roles', null=False, blank=False,
+    permissions = models.ManyToManyField(PERMISSION_MODEL_NAME,
+                through='trusts.RolePermission',
+                related_name='roles', null=False, blank=False,
                 verbose_name=_('permissions')
             )
 
     class Meta:
         pass
+
+class RolePermission(models.Model):
+    role = models.ForeignKey('trusts.Role', related_name='rolepermissions', null=False, blank=False)
+    permission = models.ForeignKey(PERMISSION_MODEL_NAME, related_name='rolepermissions', null=False, blank=False)
+    managed = models.BooleanField(null=False, blank=False, default=False)
+
+    class Meta:
+        unique_together = ('role', 'permission')
 
 
 class TrustUserPermission(models.Model):

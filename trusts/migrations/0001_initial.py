@@ -48,17 +48,34 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='RolePermission',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', primary_key=True, serialize=False, auto_created=True)),
+                ('managed', models.BooleanField(default=False)),
+                ('permission', models.ForeignKey(to='auth.Permission', related_name='rolepermissions')),
+            ],
+        ),
+        migrations.CreateModel(
             name='Role',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=80, unique=True, help_text="The name of the role. Corresponds to the key of model's trusts option.")),
                 ('groups', models.ManyToManyField(related_name='roles', verbose_name='groups', to='auth.Group')),
-                ('permissions', models.ManyToManyField(related_name='roles', verbose_name='permissions', to='auth.Permission')),
+                ('permissions', models.ManyToManyField(to='auth.Permission', related_name='roles', through='trusts.RolePermission', verbose_name='permissions')),
             ],
+        ),
+        migrations.AddField(
+            model_name='rolepermission',
+            name='role',
+            field=models.ForeignKey(to='trusts.Role', related_name='rolepermissions'),
         ),
         migrations.AlterUniqueTogether(
             name='trust',
             unique_together=set([('settlor', 'title')]),
+        ),
+        migrations.AlterUniqueTogether(
+            name='rolepermission',
+            unique_together=set([('role', 'permission')]),
         ),
         migrations.AlterUniqueTogether(
             name='trustuserpermission',

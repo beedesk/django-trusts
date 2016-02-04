@@ -26,7 +26,8 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT, Client
 from django.http.request import HttpRequest
 
-from trusts.models import Trust, Role, TrustUserPermission, TrustManager, Content, Junction
+from trusts.models import Trust, TrustManager, Content, Junction, \
+                          Role, RolePermission, TrustUserPermission
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
 
@@ -51,6 +52,12 @@ def get_or_create_root_user(test):
 
     pk = getattr(settings, 'TRUSTS_ROOT_SETTLOR', 1)
     test.user_root, created = User.objects.get_or_create(pk=pk)
+
+def reload_test_users(self):
+    # reloading user to purge the _trust_perm_cache
+    self.user_root = User._default_manager.get(pk=self.user_root.pk)
+    self.user = User._default_manager.get(pk=self.user.pk)
+    self.user1 = User._default_manager.get(pk=self.user1.pk)
 
 
 class TrustTest(TestCase):
@@ -256,12 +263,6 @@ class RuntimeModel(object):
 
 
 class TrustContentTestMixin(object):
-    def reload_test_users(self):
-        # reloading user to purge the _trust_perm_cache
-        self.user_root = User._default_manager.get(pk=self.user_root.pk)
-        self.user = User._default_manager.get(pk=self.user.pk)
-        self.user1 = User._default_manager.get(pk=self.user1.pk)
-
     def create_test_fixtures(self):
         self.group = Group(name="Test Group")
         self.group.save()
@@ -316,7 +317,7 @@ class TrustContentTestMixin(object):
         self.content = self.create_content(self.trust)
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
 
-        self.reload_test_users()
+        reload_test_users(self)
 
         self.perm_change.group_set.add(self.group)
         self.perm_change.save()
@@ -332,7 +333,7 @@ class TrustContentTestMixin(object):
 
         self.test_user_not_in_group_has_no_perm()
 
-        self.reload_test_users()
+        reload_test_users(self)
 
         self.user.groups.add(self.group)
 
@@ -349,7 +350,7 @@ class TrustContentTestMixin(object):
 
         self.test_user_in_group_has_no_perm()
 
-        self.reload_test_users()
+        reload_test_users(self)
 
         self.trust.groups.add(self.group)
 
@@ -375,14 +376,14 @@ class TrustContentTestMixin(object):
         trust = Trust(settlor=self.user, title='Test trusts')
         trust.save()
 
-        self.reload_test_users()
+        reload_test_users(self)
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertFalse(had)
 
         tup = TrustUserPermission(trust=self.trust, entity=self.user, permission=self.perm_change)
         tup.save()
 
-        self.reload_test_users()
+        reload_test_users(self)
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
 
@@ -408,7 +409,7 @@ class TrustContentTestMixin(object):
         tup = TrustUserPermission(trust=trust, entity=self.user, permission=self.perm_change)
         tup.save()
 
-        self.reload_test_users()
+        reload_test_users(self)
         had = self.user.has_perm(self.get_perm_code(self.perm_change), content)
         self.assertTrue(had)
 
@@ -417,7 +418,7 @@ class TrustContentTestMixin(object):
 
         self.content1 = self.create_content(self.trust)
 
-        self.reload_test_users()
+        reload_test_users(self)
         content_model = self.content_model if hasattr(self, 'content_model') else self.model
         qs = content_model.objects.filter(pk__in=[self.content.pk, self.content1.pk])
         had = self.user.has_perm(self.get_perm_code(self.perm_change), qs)
@@ -429,7 +430,7 @@ class TrustContentTestMixin(object):
         self.content1 = self.create_content(self.trust1)
         self.content2 = self.create_content(self.trust)
 
-        self.reload_test_users()
+        reload_test_users(self)
         qs = self.model.objects.all()
         had = self.user.has_perm(self.get_perm_code(self.perm_change), qs)
 
@@ -444,8 +445,6 @@ class TrustContentTestMixin(object):
 
 
 class ContentTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
-    contents = []
-
     def setUp(self):
         mixin = Content
 
@@ -461,9 +460,164 @@ class ContentTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
         content = self.model(trust=trust)
         content.save()
 
-        self.contents.insert(0, content)
+        return content
+
+
+class ContentRoleTestCase(RuntimeModel, TransactionTestCase):
+    class Category(models.Model):
+        name = models.CharField(max_length=40, null=False, blank=False)
+
+        class Meta:
+            abstract = True
+            default_permissions = ('add', 'read', 'change', 'delete')
+            permissions = (
+                ('add_topic_to_category', 'Add topic to a category'),
+            )
+            roles = (
+                ('public', ('read_category', 'add_topic_to_category')),
+                ('admin', ('read_category', 'add_category', 'change_category', 'add_topic_to_category')),
+                ('write', ('read_category', 'change_category', 'add_topic_to_category')),
+            )
+
+    def setUp(self):
+        mixin = Content
+
+        # Create a dummy model which extends the mixin
+        self.model = ModelBase('Category', (self.Category, mixin),
+            {'__module__': mixin.__module__})
+
+        super(ContentRoleTestCase, self).setUp()
+
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
+        self.app_label = content_model._meta.app_label
+        self.model_name = content_model._meta.model_name
+        self.set_perms()
+
+    def set_perms(self):
+        for codename in ['change', 'add', 'delete']:
+            setattr(self, 'perm_%s' % codename,
+                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
+            )
+
+    def create_content(self, trust):
+        content = self.model(trust=trust)
+        content.save()
 
         return content
+
+    def test_roles_in_meta(self):
+        self.assertIsNotNone(self.model._meta.roles)
+
+    def test_roles_unique(self):
+        self.role = Role(name='abc')
+        self.role.save()
+        rp = RolePermission(role=self.role, permission=self.perm_change)
+        rp.save()
+
+        rp = RolePermission(role=self.role, permission=self.perm_delete)
+        rp.save()
+
+        try:
+            rp = RolePermission(role=role, permission=self.perm_change)
+            rp.save()
+
+            fail('Duplicate is not detected')
+        except:
+            pass
+
+    def test_management_command_create_roles(self):
+        self.assertEqual(Role.objects.count(), 0)
+        self.assertEqual(RolePermission.objects.count(), 0)
+
+        from django.core.management import call_command
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 9)
+
+        rp = Role.objects.get(name='public')
+        ra = Role.objects.get(name='admin')
+        rw = Role.objects.get(name='write')
+
+        self.assertEqual(rp.permissions.count(), 2)
+        self.assertEqual(ra.permissions.count(), 4)
+
+        ra.permissions.get(codename='add_topic_to_category')
+        ra.permissions.get(codename='read_category')
+        ra.permissions.get(codename='add_category')
+        ra.permissions.get(codename='change_category')
+
+        self.assertEqual(rp.permissions.filter(codename='add_topic_to_category').count(), 1)
+        self.assertEqual(rp.permissions.filter(codename='add_category').count(), 0)
+        self.assertEqual(rp.permissions.filter(codename='change_category').count(), 0)
+
+        # Make change and ensure we add items
+        self.model._meta.roles +=  (('read', ('read_category', )),)
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 10)
+
+        rr = Role.objects.get(name='read')
+        self.assertEqual(rr.permissions.count(), 1)
+        self.assertEqual(rr.permissions.filter(codename='read_category').count(), 1)
+
+        # Add
+        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write']
+        self.model._meta.roles += (('write', ('change_category', 'add_category', 'add_topic_to_category', 'read_category', )),)
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 11)
+
+        # Remove
+        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write']
+        self.model._meta.roles += (('write', ('change_category', 'read_category', )),)
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 9)
+
+        # Remove 2
+        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write' and row[0] != 'read']
+        self.model._meta.roles += (('write', ('change_category',)),)
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
+
+        # Run again
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
+
+        # Add empty
+        self.model._meta.roles += (('read', ()),)
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
 
 
 class JunctionTrustTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
