@@ -70,7 +70,7 @@ class TrustModelBackendMixin(object):
                     trust_perm = set([self._get_perm_code(p) for p in
                         self.perm_model.objects.filter(
                             Q(group__trusts=trust, group__user=user_obj) |
-                            Q(roles__groups__trusts=trust, group__user=user_obj, roles__groups=F('group')) |
+                            Q(roles__groups__trusts=trust, roles__groups__user=user_obj) |
                             Q(trustentities__trust=trust, trustentities__entity=user_obj)
                         )
                         .order_by('group__trusts', 'trustentities__entity')

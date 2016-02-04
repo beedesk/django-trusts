@@ -264,7 +264,7 @@ class RuntimeModel(object):
         apps.get_app_config('trusts').models.pop(self.model._meta.model_name.lower())
 
 
-class TrustContentTestMixin(object):
+class ContentModel(object):
     def create_test_fixtures(self):
         self.group = Group(name="Test Group")
         self.group.save()
@@ -281,7 +281,7 @@ class TrustContentTestMixin(object):
             )
 
     def setUp(self):
-        super(TrustContentTestMixin, self).setUp()
+        super(ContentModel, self).setUp()
 
         get_or_create_root_user(self)
 
@@ -297,6 +297,113 @@ class TrustContentTestMixin(object):
 
         self.set_perms()
 
+
+class ContentModelMixin(RuntimeModel, ContentModel):
+    class CategoryMixin(Content):
+        name = models.CharField(max_length=40, null=False, blank=False)
+
+        class Meta:
+            abstract = True
+            default_permissions = ('add', 'read', 'change', 'delete')
+            permissions = (
+                ('add_topic_to_category', 'Add topic to a category'),
+            )
+            roles = (
+                ('public', ('read_category', 'add_topic_to_category')),
+                ('admin', ('read_category', 'add_category', 'change_category', 'add_topic_to_category')),
+                ('write', ('read_category', 'change_category', 'add_topic_to_category')),
+            )
+
+    def setUp(self):
+        mixin = self.CategoryMixin
+
+        # Create a dummy model which extends the mixin
+        self.model = ModelBase('Category', (mixin, models.Model),
+            {'__module__': mixin.__module__})
+
+        super(ContentModelMixin, self).setUp()
+
+    def create_content(self, trust):
+        content = self.model(trust=trust)
+        content.save()
+
+        return content
+
+    def append_model_roles(self, rolename, perms):
+        self.model._meta.roles += ((rolename, perms, ), )
+
+    def remove_model_roles(self, rolename):
+        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != rolename]
+
+    def get_model_roles(self):
+        return self.model._meta.roles
+
+
+class JunctionModelMixin(RuntimeModel, ContentModel):
+    class GroupJunctionMixin(Junction):
+        content = models.ForeignKey(Group, unique=True, null=False, blank=False)
+        name = models.CharField(max_length=40, null=False, blank=False)
+
+        class Meta:
+            abstract = True
+            content_roles = (
+                ('public', ('read_group', 'add_topic_to_group')),
+                ('admin', ('read_group', 'add_group', 'change_group', 'add_topic_to_group')),
+                ('write', ('read_group', 'change_group', 'add_topic_to_group')),
+            )
+
+    def setUp(self):
+        mixin = self.GroupJunctionMixin
+        self.model = ModelBase('TestGroupJunction', (mixin, models.Model),
+            {'__module__': mixin.__module__})
+
+        self.content_model = Group
+
+        ctype = ContentType.objects.get_for_model(Group)
+        Permission.objects.get_or_create(codename='read_group', content_type=ctype)
+        Permission.objects.get_or_create(codename='add_topic_to_group', content_type=ctype)
+
+        super(JunctionModelMixin, self).setUp()
+
+    def append_model_roles(self, rolename, perms):
+        self.model._meta.content_roles += ((rolename, perms, ), )
+
+    def remove_model_roles(self, rolename):
+        self.model._meta.content_roles = [row for row in self.model._meta.content_roles if row[0] != rolename]
+
+    def get_model_roles(self):
+        return self.model._meta.content_roles
+
+    def create_content(self, trust):
+        import uuid
+
+        content = self.content_model(name=str(uuid.uuid4()))
+        content.save()
+
+        junction = self.model(content=content, trust=trust)
+        junction.save()
+
+        return content
+
+
+class TrustAsContentMixin(ContentModel):
+    serialized_rollback = True
+    count = 0
+
+    def setUp(self):
+        self.model = Trust
+        self.content_model = Trust
+
+        super(TrustAsContentMixin, self).setUp()
+
+    def create_content(self, trust):
+        self.count += 1
+        content = Trust(title='Test Trust as Content %s' % self.count, trust=trust)
+        content.save()
+        return content
+
+
+class TrustContentTestMixin(ContentModel):
     def assertIsIterable(self, obj, msg='Not an iterable'):
         return self.assertTrue(hasattr(obj, '__iter__'))
 
@@ -446,109 +553,9 @@ class TrustContentTestMixin(object):
         ))
 
 
-class ContentTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
-    def setUp(self):
-        mixin = Content
-
-        # Create a dummy model which extends the mixin
-        self.model = ModelBase('TestModel' + mixin.__name__, (mixin,),
-            {'__module__': mixin.__module__})
-        self.model.id = models.AutoField(primary_key=True)
-        self.content_model = self.model
-
-        super(ContentTestCase, self).setUp()
-
-    def create_content(self, trust):
-        content = self.model(trust=trust)
-        content.save()
-
-        return content
-
-
-class JunctionTrustTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
-    class TestMixin(models.Model):
-        content = models.ForeignKey(Group, unique=True, null=False, blank=False)
-        name = models.CharField(max_length=40, null=False, blank=False)
-
-        class Meta:
-            abstract = True
-
-
-    def setUp(self):
-        mixin = Junction
-        self.model = ModelBase('GroupJunction', (self.TestMixin, mixin),
-            {'__module__': mixin.__module__})
-
-        self.content_model = Group
-
-        super(JunctionTrustTestCase, self).setUp()
-
-    def create_content(self, trust):
-        import uuid
-
-        content = self.content_model(name=str(uuid.uuid4()))
-        content.save()
-
-        junction = self.model(content=content, trust=trust)
-        junction.save()
-
-        return content
-
-    @unittest.expectedFailure
-    def test_read_permissions_added(self):
-        super(JunctionTrustTestCase, self).test_read_permissions_added()
-
-
-class TrustAsContentTestCase(TrustContentTestMixin, TestCase):
-    serialized_rollback = True
-    count = 0
-
-    def setUp(self):
-        self.model = Trust
-        self.content_model = Trust
-
-        super(TrustAsContentTestCase, self).setUp()
-
-    def create_content(self, trust):
-        self.count += 1
-        content = Trust(title='Test Trust as Content %s' % self.count, trust=trust)
-        content.save()
-        return content
-
-
 class RoleTestMixin(object):
-    def setUp(self):
-        super(RoleTestMixin, self).setUp()
-
-        content_model = self.content_model if hasattr(self, 'content_model') else self.model
-        self.app_label = content_model._meta.app_label
-        self.model_name = content_model._meta.model_name
-        self.set_perms()
-
-
-    def set_perms(self):
-        for codename in ['change', 'add', 'delete']:
-            setattr(self, 'perm_%s' % codename,
-                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
-            )
-
     def get_perm_codename(self, action):
         return '%s_%s' % (action, self.model_name.lower())
-
-    def append_model_roles(self, rolename, perms):
-        self.model._meta.roles += ((rolename, perms, ), )
-
-    def remove_model_roles(self, rolename):
-        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != rolename]
-
-    def get_model_roles(self):
-        return self.model._meta.roles
-
-    def create_content(self, trust):
-        content = self.model(trust=trust)
-        content.save()
-
-        return content
 
     def test_roles_in_meta(self):
         self.assertIsNotNone(self.get_model_roles())
@@ -570,11 +577,27 @@ class RoleTestMixin(object):
         except:
             pass
 
+    def test_has_perm(self):
+        get_or_create_root_user(self)
+        reload_test_users(self)
+
+        self.trust, created = Trust.objects.get_or_create_settlor_default(settlor=self.user)
+
+        call_command('update_roles_permissions')
+
+        content = self.create_content(self.trust)
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change)))
+
+        self.group.user_set.add(self.user)
+        self.trust.groups.add(self.group)
+        Role.objects.get(name='write').groups.add(self.group)
+
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_change), content))
+
     def test_management_command_create_roles(self):
         self.assertEqual(Role.objects.count(), 0)
         self.assertEqual(RolePermission.objects.count(), 0)
 
-        from django.core.management import call_command
         call_command('update_roles_permissions')
 
         rs = Role.objects.all()
@@ -666,66 +689,24 @@ class RoleTestMixin(object):
         self.assertEqual(rp.count(), 7)
 
 
-class ContentRoleTestCase(RoleTestMixin, RuntimeModel, TransactionTestCase):
-    class CategoryMixin(object):
-        name = models.CharField(max_length=40, null=False, blank=False)
-
-        class Meta:
-            abstract = True
-            default_permissions = ('add', 'read', 'change', 'delete')
-            permissions = (
-                ('add_topic_to_category', 'Add topic to a category'),
-            )
-            roles = (
-                ('public', ('read_category', 'add_topic_to_category')),
-                ('admin', ('read_category', 'add_category', 'change_category', 'add_topic_to_category')),
-                ('write', ('read_category', 'change_category', 'add_topic_to_category')),
-            )
-
-    def setUp(self):
-        mixin = self.CategoryMixin
-
-        # Create a dummy model which extends the mixin
-        self.model = ModelBase('Category', (mixin, Content, models.Model),
-            {'__module__': mixin.__module__})
-
-        super(ContentRoleTestCase, self).setUp()
+class TrustJunctionTestCase(TrustContentTestMixin, JunctionModelMixin, TransactionTestCase):
+    @unittest.expectedFailure
+    def test_read_permissions_added(self):
+        super(JunctionTestCase, self).test_read_permissions_added()
 
 
-class JunctionRoleTestCase(RoleTestMixin, RuntimeModel, TransactionTestCase):
-    class GroupJunctionMixin(Junction):
-        content = models.ForeignKey(Group, unique=True, null=False, blank=False)
-        name = models.CharField(max_length=40, null=False, blank=False)
+class TrustContentTestCase(TrustContentTestMixin, ContentModelMixin, TransactionTestCase):
+    pass
 
-        class Meta:
-            abstract = True
-            content_roles = (
-                ('public', ('read_group', 'add_topic_to_group')),
-                ('admin', ('read_group', 'add_group', 'change_group', 'add_topic_to_group')),
-                ('write', ('read_group', 'change_group', 'add_topic_to_group')),
-            )
 
-    def setUp(self):
-        mixin = self.GroupJunctionMixin
-        self.model = ModelBase('TestGroupJunction', (mixin, models.Model),
-            {'__module__': mixin.__module__})
+class TrustAsContentTestCase(TrustContentTestMixin, TrustAsContentMixin, TestCase):
+    pass
 
-        self.content_model = Group
 
-        ctype = ContentType.objects.get_for_model(Group)
-        pr = Permission(codename='read_group', content_type=ctype)
-        pr.save()
+class RoleContentTestCase(RoleTestMixin, ContentModelMixin, TransactionTestCase):
+    pass
 
-        patt = Permission(codename='add_topic_to_group', content_type=ctype)
-        patt.save()
-        super(JunctionRoleTestCase, self).setUp()
 
-    def append_model_roles(self, rolename, perms):
-        self.model._meta.content_roles += ((rolename, perms, ), )
-
-    def remove_model_roles(self, rolename):
-        self.model._meta.content_roles = [row for row in self.model._meta.content_roles if row[0] != rolename]
-
-    def get_model_roles(self):
-        return self.model._meta.content_roles
+class RoleJunctionTestCase(RoleTestMixin, JunctionModelMixin, TransactionTestCase):
+    pass
 
