@@ -98,18 +98,18 @@ Example::
        # user.has_perm('%s.change_%s' % (app, model_name)) ==> True
        # user.has_perm('%s.change_%s' % (app, model_name), obj) ==> False
 
-      # View
-      def create_receipt_object_for_user(request, title, details):
-          trust = Trust.objects.get_or_create_settlor_default(settlor=request.user)
+   # View
+   def create_receipt_object_for_user(request, title, details):
+       trust = Trust.objects.get_or_create_settlor_default(settlor=request.user)
 
-          content = Receipt(trust=trust, title=title, details=details)
-          content.save()
+       content = Receipt(trust=trust, title=title, details=details)
+       content.save()
 
-          model_name = receipt.__class__.__name__.lower()
-          perm = Permission.objects.get_by_natural_key('%_%' % ('change', model_name), 'app', model_name)
+       model_name = receipt.__class__.__name__.lower()
+       perm = Permission.objects.get_by_natural_key('%_%' % ('change', model_name), 'app', model_name)
 
-          tup = TrustUserPermission(trust=trust, entity=request.user, permission=perm)
-          tup.save()
+       tup = TrustUserPermission(trust=trust, entity=request.user, permission=perm)
+       tup.save()
 
        # request.user.has_perm('%s.change_%s' % ('app', model_name), content) ==> True
 
@@ -134,6 +134,41 @@ model of ReceiptImage. The following code makes both model available for permiss
 
    Content.register_content(ReceiptImage, '%s__image' % Content.get_content_fieldlookup('app.Receipt'))
    Content.register_content(ReceiptImageMeta, '%s__image' % Content.get_content_fieldlookup(ReceiptImage))
+
+Role
+~~~~
+
+``Role`` can be specified in Content's Meta class. The management command ``update_roles_permissions.py`` will update corresponding entries in the database.
+
+Here is an example of how roles can be specified::
+
+   class Receipt(Content):
+
+       name = models.CharField(max_length=40, null=False, blank=False)
+
+       class Meta:
+           abstract = True
+           default_permissions = ('add', 'read', 'change', 'delete')
+           permissions = (
+               ('ask_question_about_receipt', 'Ask question about a receipt'),
+           )
+           roles = (
+               ('user', ('read_receipt', 'ask_question_about_receipt')),
+               ('manager', ('read_receipt', 'change_receipt', 'ask_question_about_receipt')),
+               ('accounting', ('read_receipt', 'add_receipt', 'change_receipt', 'ask_question_about_receipt')),
+           )
+
+Roles specified in different models with the same role name are merged. Once the database entries is created, all user in groups that links to a role will automatically inherits all permissions specified for that roles for all models.
+
+Add a role to a group to instead of adding each permissions one-by-one::
+
+   accountants = Group.objects.get(name='accountants')
+   accountants.roles.add(Role.objects.get(name='accounting')
+
+   trust.groups.add(accountants)
+   r = Receipt(trust=trust, ...)
+   r.save()
+
 
 Permissions Checking
 ~~~~~~~~~~~~~~~~~~~~
