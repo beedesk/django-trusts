@@ -261,6 +261,8 @@ class RuntimeModel(object):
 
         super(RuntimeModel, self).tearDown()
 
+        apps.get_app_config('trusts').models.pop(self.model._meta.model_name.lower())
+
 
 class TrustContentTestMixin(object):
     def create_test_fixtures(self):
@@ -463,163 +465,6 @@ class ContentTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
         return content
 
 
-class ContentRoleTestCase(RuntimeModel, TransactionTestCase):
-    class Category(models.Model):
-        name = models.CharField(max_length=40, null=False, blank=False)
-
-        class Meta:
-            abstract = True
-            default_permissions = ('add', 'read', 'change', 'delete')
-            permissions = (
-                ('add_topic_to_category', 'Add topic to a category'),
-            )
-            roles = (
-                ('public', ('read_category', 'add_topic_to_category')),
-                ('admin', ('read_category', 'add_category', 'change_category', 'add_topic_to_category')),
-                ('write', ('read_category', 'change_category', 'add_topic_to_category')),
-            )
-
-    def setUp(self):
-        mixin = Content
-
-        # Create a dummy model which extends the mixin
-        self.model = ModelBase('Category', (self.Category, mixin),
-            {'__module__': mixin.__module__})
-
-        super(ContentRoleTestCase, self).setUp()
-
-        content_model = self.content_model if hasattr(self, 'content_model') else self.model
-        self.app_label = content_model._meta.app_label
-        self.model_name = content_model._meta.model_name
-        self.set_perms()
-
-    def set_perms(self):
-        for codename in ['change', 'add', 'delete']:
-            setattr(self, 'perm_%s' % codename,
-                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
-            )
-
-    def create_content(self, trust):
-        content = self.model(trust=trust)
-        content.save()
-
-        return content
-
-    def test_roles_in_meta(self):
-        self.assertIsNotNone(self.model._meta.roles)
-
-    def test_roles_unique(self):
-        self.role = Role(name='abc')
-        self.role.save()
-        rp = RolePermission(role=self.role, permission=self.perm_change)
-        rp.save()
-
-        rp = RolePermission(role=self.role, permission=self.perm_delete)
-        rp.save()
-
-        try:
-            rp = RolePermission(role=role, permission=self.perm_change)
-            rp.save()
-
-            fail('Duplicate is not detected')
-        except:
-            pass
-
-    def test_management_command_create_roles(self):
-        self.assertEqual(Role.objects.count(), 0)
-        self.assertEqual(RolePermission.objects.count(), 0)
-
-        from django.core.management import call_command
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 3)
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 9)
-
-        rp = Role.objects.get(name='public')
-        ra = Role.objects.get(name='admin')
-        rw = Role.objects.get(name='write')
-
-        self.assertEqual(rp.permissions.count(), 2)
-        self.assertEqual(ra.permissions.count(), 4)
-
-        ra.permissions.get(codename='add_topic_to_category')
-        ra.permissions.get(codename='read_category')
-        ra.permissions.get(codename='add_category')
-        ra.permissions.get(codename='change_category')
-
-        self.assertEqual(rp.permissions.filter(codename='add_topic_to_category').count(), 1)
-        self.assertEqual(rp.permissions.filter(codename='add_category').count(), 0)
-        self.assertEqual(rp.permissions.filter(codename='change_category').count(), 0)
-
-        # Make change and ensure we add items
-        self.model._meta.roles +=  (('read', ('read_category', )),)
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 4)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 10)
-
-        rr = Role.objects.get(name='read')
-        self.assertEqual(rr.permissions.count(), 1)
-        self.assertEqual(rr.permissions.filter(codename='read_category').count(), 1)
-
-        # Add
-        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write']
-        self.model._meta.roles += (('write', ('change_category', 'add_category', 'add_topic_to_category', 'read_category', )),)
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 4)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 11)
-
-        # Remove
-        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write']
-        self.model._meta.roles += (('write', ('change_category', 'read_category', )),)
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 4)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 9)
-
-        # Remove 2
-        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != 'write' and row[0] != 'read']
-        self.model._meta.roles += (('write', ('change_category',)),)
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 3)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 7)
-
-        # Run again
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 3)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 7)
-
-        # Add empty
-        self.model._meta.roles += (('read', ()),)
-        call_command('update_roles_permissions')
-
-        rs = Role.objects.all()
-        self.assertEqual(rs.count(), 4)
-
-        rp = RolePermission.objects.all()
-        self.assertEqual(rp.count(), 7)
-
-
 class JunctionTrustTestCase(TrustContentTestMixin, RuntimeModel, TransactionTestCase):
     class TestMixin(models.Model):
         content = models.ForeignKey(Group, unique=True, null=False, blank=False)
@@ -669,3 +514,218 @@ class TrustAsContentTestCase(TrustContentTestMixin, TestCase):
         content = Trust(title='Test Trust as Content %s' % self.count, trust=trust)
         content.save()
         return content
+
+
+class RoleTestMixin(object):
+    def setUp(self):
+        super(RoleTestMixin, self).setUp()
+
+        content_model = self.content_model if hasattr(self, 'content_model') else self.model
+        self.app_label = content_model._meta.app_label
+        self.model_name = content_model._meta.model_name
+        self.set_perms()
+
+
+    def set_perms(self):
+        for codename in ['change', 'add', 'delete']:
+            setattr(self, 'perm_%s' % codename,
+                Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
+            )
+
+    def get_perm_codename(self, action):
+        return '%s_%s' % (action, self.model_name.lower())
+
+    def append_model_roles(self, rolename, perms):
+        self.model._meta.roles += ((rolename, perms, ), )
+
+    def remove_model_roles(self, rolename):
+        self.model._meta.roles = [row for row in self.model._meta.roles if row[0] != rolename]
+
+    def get_model_roles(self):
+        return self.model._meta.roles
+
+    def create_content(self, trust):
+        content = self.model(trust=trust)
+        content.save()
+
+        return content
+
+    def test_roles_in_meta(self):
+        self.assertIsNotNone(self.get_model_roles())
+
+    def test_roles_unique(self):
+        self.role = Role(name='abc')
+        self.role.save()
+        rp = RolePermission(role=self.role, permission=self.perm_change)
+        rp.save()
+
+        rp = RolePermission(role=self.role, permission=self.perm_delete)
+        rp.save()
+
+        try:
+            rp = RolePermission(role=role, permission=self.perm_change)
+            rp.save()
+
+            fail('Duplicate is not detected')
+        except:
+            pass
+
+    def test_management_command_create_roles(self):
+        self.assertEqual(Role.objects.count(), 0)
+        self.assertEqual(RolePermission.objects.count(), 0)
+
+        from django.core.management import call_command
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 9)
+
+        rp = Role.objects.get(name='public')
+        ra = Role.objects.get(name='admin')
+        rw = Role.objects.get(name='write')
+
+        self.assertEqual(rp.permissions.count(), 2)
+        self.assertEqual(ra.permissions.count(), 4)
+
+        ra.permissions.get(codename=self.get_perm_codename('add_topic_to'))
+        ra.permissions.get(codename=self.get_perm_codename('read'))
+        ra.permissions.get(codename=self.get_perm_codename('add'))
+        ra.permissions.get(codename=self.get_perm_codename('change'))
+
+        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('add_topic_to')).count(), 1)
+        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('add')).count(), 0)
+        self.assertEqual(rp.permissions.filter(codename=self.get_perm_codename('change')).count(), 0)
+
+        # Make change and ensure we add items
+        self.append_model_roles('read', (self.get_perm_codename('read'),))
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 10)
+
+        rr = Role.objects.get(name='read')
+        self.assertEqual(rr.permissions.count(), 1)
+        self.assertEqual(rr.permissions.filter(codename=self.get_perm_codename('read')).count(), 1)
+
+        # Add
+        self.remove_model_roles('write')
+        self.append_model_roles('write', (self.get_perm_codename('change'), self.get_perm_codename('add'), self.get_perm_codename('add_topic_to'), self.get_perm_codename('read'),))
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 11)
+
+        # Remove
+        self.remove_model_roles('write')
+        self.append_model_roles('write', (self.get_perm_codename('change'), self.get_perm_codename('read'), ))
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 9)
+
+        # Remove 2
+        self.remove_model_roles('write')
+        self.remove_model_roles('read')
+        self.append_model_roles('write', (self.get_perm_codename('change'), ))
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
+
+        # Run again
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 3)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
+
+        # Add empty
+        self.append_model_roles('read', ())
+        call_command('update_roles_permissions')
+
+        rs = Role.objects.all()
+        self.assertEqual(rs.count(), 4)
+
+        rp = RolePermission.objects.all()
+        self.assertEqual(rp.count(), 7)
+
+
+class ContentRoleTestCase(RoleTestMixin, RuntimeModel, TransactionTestCase):
+    class CategoryMixin(object):
+        name = models.CharField(max_length=40, null=False, blank=False)
+
+        class Meta:
+            abstract = True
+            default_permissions = ('add', 'read', 'change', 'delete')
+            permissions = (
+                ('add_topic_to_category', 'Add topic to a category'),
+            )
+            roles = (
+                ('public', ('read_category', 'add_topic_to_category')),
+                ('admin', ('read_category', 'add_category', 'change_category', 'add_topic_to_category')),
+                ('write', ('read_category', 'change_category', 'add_topic_to_category')),
+            )
+
+    def setUp(self):
+        mixin = self.CategoryMixin
+
+        # Create a dummy model which extends the mixin
+        self.model = ModelBase('Category', (mixin, Content, models.Model),
+            {'__module__': mixin.__module__})
+
+        super(ContentRoleTestCase, self).setUp()
+
+
+class JunctionRoleTestCase(RoleTestMixin, RuntimeModel, TransactionTestCase):
+    class GroupJunctionMixin(Junction):
+        content = models.ForeignKey(Group, unique=True, null=False, blank=False)
+        name = models.CharField(max_length=40, null=False, blank=False)
+
+        class Meta:
+            abstract = True
+            content_roles = (
+                ('public', ('read_group', 'add_topic_to_group')),
+                ('admin', ('read_group', 'add_group', 'change_group', 'add_topic_to_group')),
+                ('write', ('read_group', 'change_group', 'add_topic_to_group')),
+            )
+
+    def setUp(self):
+        mixin = self.GroupJunctionMixin
+        self.model = ModelBase('TestGroupJunction', (mixin, models.Model),
+            {'__module__': mixin.__module__})
+
+        self.content_model = Group
+
+        ctype = ContentType.objects.get_for_model(Group)
+        pr = Permission(codename='read_group', content_type=ctype)
+        pr.save()
+
+        patt = Permission(codename='add_topic_to_group', content_type=ctype)
+        patt.save()
+        super(JunctionRoleTestCase, self).setUp()
+
+    def append_model_roles(self, rolename, perms):
+        self.model._meta.content_roles += ((rolename, perms, ), )
+
+    def remove_model_roles(self, rolename):
+        self.model._meta.content_roles = [row for row in self.model._meta.content_roles if row[0] != rolename]
+
+    def get_model_roles(self):
+        return self.model._meta.content_roles
+

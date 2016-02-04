@@ -14,6 +14,19 @@ from django.db.models import Q
 from django.utils.encoding import DEFAULT_LOCALE_ENCODING
 from django.utils import six
 
+def _process_roles(Permission, model_roles, content_klass, roles, using):
+    for rolename, perm_names in roles:
+        if rolename not in model_roles:
+            model_roles[rolename] = set()
+
+        # Force looking up the content types in the current database
+        # before creating foreign keys to them.
+        from django.contrib.contenttypes.models import ContentType
+        ctype = ContentType.objects.db_manager(using).get_for_model(content_klass)
+
+        model_roles[rolename].update([Permission.objects.get(content_type=ctype, codename=perm_name)
+                for perm_name in perm_names
+        ])
 
 def update_roles_permissions(Role, Permission, RolePermission, app_config, verbosity=2, interactive=True, using=DEFAULT_DB_ALIAS, **kwargs):
     if not router.allow_migrate_model(using, Role):
@@ -24,22 +37,16 @@ def update_roles_permissions(Role, Permission, RolePermission, app_config, verbo
     except LookupError:
         return
 
-    from django.contrib.contenttypes.models import ContentType
-
     # This will hold the roles we're looking for as
     # (rolename (permissions))
     model_roles = {}
     for klass in app_config.get_models():
-        # Force looking up the content types in the current database
-        # before creating foreign keys to them.
-        ctype = ContentType.objects.db_manager(using).get_for_model(klass)
         if hasattr(klass._meta, 'roles'):
-            for rolename, perm_names in klass._meta.roles:
-                if rolename not in model_roles:
-                    model_roles[rolename] = set()
-                model_roles[rolename].update([Permission.objects.get(content_type=ctype, codename=perm_name)
-                        for perm_name in perm_names
-                ])
+            _process_roles(Permission, model_roles, klass, klass._meta.roles, using)
+        elif hasattr(klass._meta, 'content_roles'):
+            if hasattr(klass, 'get_content_model'):
+                content_klass = klass.get_content_model()
+                _process_roles(Permission, model_roles, content_klass, klass._meta.content_roles, using)
 
     # Find all the Roles and its Permission
     db_roles = {}
