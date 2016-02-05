@@ -275,7 +275,7 @@ class ContentModel(object):
          )
 
     def set_perms(self):
-        for codename in ['change', 'add', 'delete']:
+        for codename in ['change', 'add', 'delete', 'read']:
             setattr(self, 'perm_%s' % codename,
                 Permission.objects.get_by_natural_key('%s_%s' % (codename, self.model_name), self.app_label, self.model_name)
             )
@@ -585,14 +585,90 @@ class RoleTestMixin(object):
 
         call_command('update_roles_permissions')
 
-        content = self.create_content(self.trust)
+        self.content1 = self.create_content(self.trust)
         self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change)))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_read)))
 
         self.group.user_set.add(self.user)
         self.trust.groups.add(self.group)
-        Role.objects.get(name='write').groups.add(self.group)
+        Role.objects.get(name='public').groups.add(self.group)
 
-        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_change), content))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+    def test_has_perm_diff_roles_on_contents(self):
+        self.test_has_perm()
+
+        content2 = self.create_content(self.trust)
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), content2))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), content2))
+
+        # diff trust, same group, same role
+        trust3 = Trust(settlor=self.user, title='trust 3')
+        trust3.save()
+        content3 = self.create_content(trust3)
+
+        reload_test_users(self)
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_read), content3))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), content3))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+        trust3.groups.add(self.group)
+
+        reload_test_users(self)
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), content3))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), content3))
+
+        # make sure trust does not affect one another
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+        # diff trust, diff group, stronger role, not in group
+        trust4 = Trust(settlor=self.user, title='trust 4')
+        trust4.save()
+        content4 = self.create_content(trust4)
+        group4 = Group(name='admin group')
+        group4.save()
+        Role.objects.get(name='admin').groups.add(group4)
+
+        reload_test_users(self)
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), content3))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), content3))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_read), content4))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), content4))
+
+        # make sure trust does not affect one another
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+    def test_has_perm_diff_group_on_contents(self):
+        self.test_has_perm()
+
+        # same trust, diff role, in different group
+        group3 = Group(name='write group')
+        group3.save()
+        Role.objects.get(name='write').groups.add(group3)
+        self.trust.groups.add(group3)
+
+        reload_test_users(self)
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+        group3.user_set.add(self.user)
+
+        reload_test_users(self)
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
+
+        content3 = self.create_content(self.trust)
+
+        reload_test_users(self)
+
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), content3))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_change), content3))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
+        self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
 
     def test_management_command_create_roles(self):
         self.assertEqual(Role.objects.count(), 0)
