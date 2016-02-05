@@ -15,7 +15,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
     name='django-trusts',
-    version='0.10.0',
+    version='0.10.1',
     description='Django authorization add-on for multiple organizations and object-level permission settings',
     author='Thomas Yip',
     author_email='thomasleaf@gmail.com',
@@ -30,7 +30,6 @@ setup(
     classifiers=[
 	'Development Status :: 4 - Beta',
 	'Framework :: Django :: 1.8',
-	'Framework :: Django :: 1.9',
 	'Intended Audience :: Developers',
 	'Intended Audience :: Information Technology',
 	'Intended Audience :: System Administrators',
@@ -39,7 +38,6 @@ setup(
 	'Operating System :: OS Independent',
 	'Programming Language :: Python',
 	'Programming Language :: Python :: 2',
-	'Programming Language :: Python :: 3',
 	'Topic :: Software Development :: Libraries',
     ],
 )
