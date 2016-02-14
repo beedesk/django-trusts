@@ -22,7 +22,7 @@ setup(
     long_description=README,
     url='http://github.com/beedesk/django-trusts',
     packages=find_packages(exclude=[]),
-    test_suite="",
+    test_suite="runtests.runtests",
     include_package_data=True,
     zip_safe=False,
     install_requires=REQUIREMENTS,
