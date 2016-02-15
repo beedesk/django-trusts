@@ -159,7 +159,6 @@ class TrustTest(TestCase):
         except ValidationError as ve:
             pass
 
-@unittest.expectedFailure
 class DecoratorsTest(TestCase):
     def setUp(self):
         super(DecoratorsTest, self).setUp()

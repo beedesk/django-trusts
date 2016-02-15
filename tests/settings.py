@@ -19,3 +19,5 @@ DATABASES = {
         'NAME': ':memory:',
     }
 }
+
+ROOT_URLCONF = 'tests.urls'
