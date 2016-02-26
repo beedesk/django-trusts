@@ -29,7 +29,6 @@ from trusts.models import Trust, TrustManager, Content, Junction, \
                           Role, RolePermission, TrustUserPermission
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required, P
-from trustup.models import GroupJunction
 
 
 def create_test_users(test):
@@ -269,119 +268,6 @@ class DecoratorsTest(TestCase):
         self.assertIsNotNone(filter)
         self.assertEqual(filter.count(), 1)
         self.assertEqual(filter.first().pk, self.group.pk)
-
-
-class PTest(TestCase):
-    def setUp(self):
-        super(PTest, self).setUp()
-
-        call_command('create_trust_root')
-        get_or_create_root_user(self)
-        create_test_users(self)
-        self.group1 = Group.objects.create(name='Test group 1')
-        self.group2 = Group.objects.create(name='Test group 2')
-
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-        request.META['SERVER_NAME'] = 'beedesk.com'
-        request.META['SERVER_PORT'] = 80
-        self.request = request
-
-        # Change perm for g1 and g2
-        for g in [self.group2, self.group1]:
-            trust = Trust(settlor=self.user, trust=Trust.objects.get_root(), title='Trust for group %s' % g.pk)
-            trust.save()
-            perm = Permission.objects.get(codename='change_group')
-            group = Group.objects.get(pk=g.pk)
-
-            self.user.groups.add(group)
-            perm.group_set.add(group)
-
-            junction = GroupJunction(trust=trust, content=g)
-            junction.save()
-
-            tup = TrustUserPermission(trust=trust, entity=self.user, permission=perm)
-            tup.save()
-
-        # Delete perm only for g1
-        perm = Permission.objects.get(codename='delete_group')
-        group = Group.objects.get(pk=self.group1.pk)
-
-        self.user.groups.add(group)
-        perm.group_set.add(group)
-
-        tup = TrustUserPermission(trust=trust, entity=self.user, permission=perm)
-        tup.save()
-
-        reload_test_users(self)
-        setattr(request, 'user', self.user)
-
-    def test_P(self):
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-        self.assertTrue(p.check(self.request, pk=self.group2.pk))
-
-        p = P('auth.delete_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-        self.assertFalse(p.check(self.request, pk=self.group2.pk))
-
-    def test_P_and(self):
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) & \
-            P('auth.delete_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-        self.assertFalse(p.check(self.request, pk=self.group2.pk))
-
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) & \
-            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertFalse(p.check(self.request, pk=self.group1.pk))
-
-    def test_P_or(self):
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) | \
-            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) | \
-            P('auth.delete_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-        self.assertTrue(p.check(self.request, pk=self.group2.pk))
-
-        p = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) | \
-            P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertFalse(p.check(self.request, pk=self.group1.pk))
-
-    def test_P_complex(self):
-        p = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) | \
-            (P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) &
-             P('admin.change_all'))
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-        self.assertTrue(p.check(self.request, pk=self.group2.pk))
-
-        p = (P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'}) |
-             P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})) & \
-            P('admin.change_all')
-        self.assertFalse(p.check(self.request, pk=self.group1.pk))
-        self.assertFalse(p.check(self.request, pk=self.group2.pk))
-
-        p1 = P('auth.change_group', fieldlookups_kwargs={'pk': 'pk'})
-        p2 = P('auth.delete_group', fieldlookups_kwargs={'pk': 'pk'})
-        p3 = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
-        p4 = P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
-        self.assertTrue(p1.check(self.request, pk=self.group1.pk))
-        self.assertTrue(p2.check(self.request, pk=self.group1.pk))
-        self.assertFalse(p3.check(self.request, pk=self.group1.pk))
-        self.assertFalse(p4.check(self.request, pk=self.group1.pk))
-
-        p = (p1 | p3) & (p2 | p4)
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-
-        p = (p1 & p3) | (p2 & p4)
-        self.assertFalse(p.check(self.request, pk=self.group1.pk))
-
-        p = (p1 & p2) | (p3 & p4)
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
-
-        p = (p1 & p3) | (p2 & p4) | p1
-        self.assertTrue(p.check(self.request, pk=self.group1.pk))
 
 
 class RuntimeModel(object):
@@ -947,3 +833,108 @@ class RoleContentTestCase(RoleTestMixin, ContentModelMixin, TransactionTestCase)
 
 class RoleJunctionTestCase(RoleTestMixin, JunctionModelMixin, TransactionTestCase):
     pass
+
+
+class PTest(ContentModelMixin, TestCase):
+    def setUp(self):
+        super(PTest, self).setUp()
+
+        self.trust1 = Trust(settlor=self.user, trust=Trust.objects.get_root())
+        self.trust1.save()
+        
+        self.trust2 = Trust(settlor=self.user1, trust=Trust.objects.get_root())
+        self.trust2.save()
+        
+        self.content1 = self.create_content(self.trust1)
+        self.content2 = self.create_content(self.trust2)
+
+        tup = TrustUserPermission(trust=self.trust1, entity=self.user, permission=self.perm_change)
+        tup.save()
+
+        tup = TrustUserPermission(trust=self.trust1, entity=self.user, permission=self.perm_delete)
+        tup.save()
+        
+        tup = TrustUserPermission(trust=self.trust2, entity=self.user, permission=self.perm_change)
+        tup.save()
+
+        reload_test_users(self)
+
+        request = HttpRequest()
+        setattr(request, 'user', self.user)
+        request.META['SERVER_NAME'] = 'beedesk.com'
+        request.META['SERVER_PORT'] = 80
+        self.request = request
+    '''
+    def test_P(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+
+        p = P(self.get_perm_code(self.perm_delete), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content2.pk))'''
+
+    def test_P(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+        self.assertTrue(p.check(self.request, pk=self.content2.pk))
+
+        p = P(self.get_perm_code(self.perm_delete), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+        self.assertFalse(p.check(self.request, pk=self.content2.pk))
+
+    def test_P_and(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) & \
+            P(self.get_perm_code(self.perm_delete), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+        self.assertFalse(p.check(self.request, pk=self.content2.pk))
+
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) & \
+            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        self.assertFalse(p.check(self.request, pk=self.content1.pk))
+
+    def test_P_or(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            P(self.get_perm_code(self.perm_delete), fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+        self.assertTrue(p.check(self.request, pk=self.content2.pk))
+
+        p = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) | \
+            P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        self.assertFalse(p.check(self.request, pk=self.content1.pk))
+
+    def test_P_complex(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            (P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) &
+             P('admin.change_all'))
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+        self.assertTrue(p.check(self.request, pk=self.content2.pk))
+
+        p = (P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) |
+             P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})) & \
+            P('admin.change_all')
+        self.assertFalse(p.check(self.request, pk=self.content1.pk))
+        self.assertFalse(p.check(self.request, pk=self.content2.pk))
+
+        p1 = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'})
+        p2 = P(self.get_perm_code(self.perm_delete), fieldlookups_kwargs={'pk': 'pk'})
+        p3 = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        p4 = P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        self.assertTrue(p1.check(self.request, pk=self.content1.pk))
+        self.assertTrue(p2.check(self.request, pk=self.content1.pk))
+        self.assertFalse(p3.check(self.request, pk=self.content1.pk))
+        self.assertFalse(p4.check(self.request, pk=self.content1.pk))
+
+        p = (p1 | p3) & (p2 | p4)
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+
+        p = (p1 & p3) | (p2 & p4)
+        self.assertFalse(p.check(self.request, pk=self.content1.pk))
+
+        p = (p1 & p2) | (p3 & p4)
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
+
+        p = (p1 & p3) | (p2 & p4) | p1
+        self.assertTrue(p.check(self.request, pk=self.content1.pk))
