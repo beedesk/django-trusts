@@ -19,10 +19,10 @@ class P(object):
         self.fieldlookups_kwargs = kwargs.get('fieldlookups_kwargs')
         self.fieldlookups_getparams = kwargs.get('fieldlookups_getparams')
         self.fieldlookups_postparams = kwargs.get('fieldlookups_postparams')
+        self.permitted = False
         self._left_operand = None
         self._right_operand = None
         self._operator = None
-        self._raise_exception = False
 
     def __and__(self, other):
         if not isinstance(other, self.__class__):
@@ -44,38 +44,39 @@ class P(object):
         p._operator = or_
         return p
 
-    def check(self, request, *args, **kwargs):
+    def __repr__(self):
+        return self.__unicode__()
+
+    def __unicode__(self):
         if not self._operator:
-            perms = (self.perm, )
+            return self.perm
 
-            fieldlookups = _resolve_fieldlookups(request, kwargs,
-                                                 fieldlookups_kwargs=self.fieldlookups_kwargs,
-                                                 fieldlookups_getparams=self.fieldlookups_getparams,
-                                                 fieldlookups_postparams=self.fieldlookups_postparams)
+        return 'P object'
 
-            items = None
-            if fieldlookups is not None:
-                items = _get_permissible_items(request, self.perm, fieldlookups)
-                if items is None:
-                    if self._raise_exception:
-                        raise Http404
-                    return False
+    def get_lookup_kwargs(self):
+        return {
+            'fieldlookups_kwargs': self.fieldlookups_kwargs,
+            'fieldlookups_getparams': self.fieldlookups_getparams,
+            'fieldlookups_postparams': self.fieldlookups_postparams,
+        }
 
-            if request.user.has_perms(perms, items):
-                return True
+    def get_leaves(self):
+        leaves = []
+        if not self._operator:
+            return [self]
 
-            if self._raise_exception:
-                raise PermissionDenied
+        # Do not use += or leaves.extend here since it changes the original list
+        leaves = leaves + self._left_operand.get_leaves()
+        leaves = leaves + self._right_operand.get_leaves()
 
-            return False
+        return leaves
+
+    def solve(self):
+        if not self._operator:
+            return self.permitted
         else:
-            # Parent node, return result of checks and pass _raise_exception value deeper
-            if self._raise_exception:
-                self._left_operand._raise_exception = True
-                self._right_operand._raise_exception = True
-
-            return self._operator(self._left_operand.check(request, *args, **kwargs),
-                                  self._right_operand.check(request, *args, **kwargs))
+            # Parent node, return result operation
+            return self._operator(self._left_operand.solve(), self._right_operand.solve())
 
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
@@ -160,6 +161,12 @@ def permission_required(perm, raise_exception=True, login_url=None,
     '''
 
     def check_perms(request, *args, **kwargs):
+        if isinstance(perm, P):
+            return check_by_p(request, *args, **kwargs)
+
+        return check_by_name(request, *args, **kwargs)
+
+    def check_by_name(request, *args, **kwargs):
         if not isinstance(perm, (list, tuple)):
             perms = (perm, )
         else:
@@ -187,8 +194,31 @@ def permission_required(perm, raise_exception=True, login_url=None,
             raise PermissionDenied
         return False
 
-    if isinstance(perm, P):
-        perm._raise_exception = raise_exception
-        return request_passes_test(perm.check, login_url=login_url)
+    def check_by_p(request, *args, **kwargs):
+        perms = perm.get_leaves()
+
+        for p in perms:
+            fieldlookups = _resolve_fieldlookups(request, kwargs, **p.get_lookup_kwargs())
+            items = None
+            if fieldlookups is not None:
+                items = _get_permissible_items(request, p.perm, fieldlookups)
+                if items is None:
+                    p.permitted = False
+                    continue
+
+            if request.user.has_perms((p.perm, ), items):
+                p.permitted = True
+                continue
+
+            p.permitted = False
+
+        res = perm.solve()
+        if res:
+            return res
+
+        # In case the 403 handler should be called raise the exception
+        if raise_exception:
+            raise PermissionDenied
+        return False
 
     return request_passes_test(check_perms, login_url=login_url)
