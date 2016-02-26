@@ -8,8 +8,74 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.decorators import available_attrs
 from django.utils.six.moves.urllib.parse import urlparse
 from django.http import Http404
+from operator import and_, or_
 
 from trusts import utils
+
+
+class P(object):
+    def __init__(self, perm, **kwargs):
+        self.perm = perm
+        self.fieldlookups_kwargs = kwargs.get('fieldlookups_kwargs')
+        self.fieldlookups_getparams = kwargs.get('fieldlookups_getparams')
+        self.fieldlookups_postparams = kwargs.get('fieldlookups_postparams')
+        self._left_operand = None
+        self._right_operand = None
+        self._operator = None
+        self._raise_exception = False
+
+    def __and__(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError("unsupported operand type(s) for &: '%s' and '%s'" % type(self), type(other))
+
+        p = type(self)('')
+        p._left_operand = self
+        p._right_operand = other
+        p._operator = and_
+        return p
+
+    def __or__(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError("unsupported operand type(s) for |: '%s' and '%s'" % type(self), type(other))
+
+        p = type(self)('')
+        p._left_operand = self
+        p._right_operand = other
+        p._operator = or_
+        return p
+
+    def check(self, request, *args, **kwargs):
+        if not self._operator:
+            perms = (self.perm, )
+
+            fieldlookups = _resolve_fieldlookups(request, kwargs,
+                                                 fieldlookups_kwargs=self.fieldlookups_kwargs,
+                                                 fieldlookups_getparams=self.fieldlookups_getparams,
+                                                 fieldlookups_postparams=self.fieldlookups_postparams)
+
+            items = None
+            if fieldlookups is not None:
+                items = _get_permissible_items(request, self.perm, fieldlookups)
+                if items is None:
+                    if self._raise_exception:
+                        raise Http404
+                    return False
+
+            if request.user.has_perms(perms, items):
+                return True
+
+            if self._raise_exception:
+                raise PermissionDenied
+
+            return False
+        else:
+            # Parent node, return result of checks and pass _raise_exception value deeper
+            if self._raise_exception:
+                self._left_operand._raise_exception = True
+                self._right_operand._raise_exception = True
+
+            return self._operator(self._left_operand.check(request, *args, **kwargs),
+                                  self._right_operand.check(request, *args, **kwargs))
 
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
@@ -42,6 +108,7 @@ def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_
         return _wrapped_view
     return decorator
 
+
 def _collect_args(fieldlookups, args):
     results = {}
 
@@ -55,6 +122,7 @@ def _collect_args(fieldlookups, args):
             results[lookup] = None
 
     return results
+
 
 def _get_permissible_items(request, permext, fieldlookups):
     if fieldlookups is None:
@@ -118,5 +186,9 @@ def permission_required(perm, raise_exception=True, login_url=None,
         if raise_exception:
             raise PermissionDenied
         return False
+
+    if isinstance(perm, P):
+        perm._raise_exception = raise_exception
+        return request_passes_test(perm.check, login_url=login_url)
 
     return request_passes_test(check_perms, login_url=login_url)
