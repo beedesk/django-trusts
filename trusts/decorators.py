@@ -19,7 +19,6 @@ class P(object):
         self.fieldlookups_kwargs = kwargs.get('fieldlookups_kwargs')
         self.fieldlookups_getparams = kwargs.get('fieldlookups_getparams')
         self.fieldlookups_postparams = kwargs.get('fieldlookups_postparams')
-        self.permitted = False
         self._left_operand = None
         self._right_operand = None
         self._operator = None
@@ -71,12 +70,12 @@ class P(object):
 
         return leaves
 
-    def solve(self):
+    def solve(self, perms):
         if not self._operator:
-            return self.permitted
+            return perms[id(self)]
         else:
             # Parent node, return result operation
-            return self._operator(self._left_operand.solve(), self._right_operand.solve())
+            return self._operator(self._left_operand.solve(perms), self._right_operand.solve(perms))
 
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
@@ -196,23 +195,24 @@ def permission_required(perm, raise_exception=True, login_url=None,
 
     def check_by_p(request, *args, **kwargs):
         perms = perm.get_leaves()
+        local_perms = {}
 
         for p in perms:
+            # Store permission state for later solving without changing P state
+            local_perms[id(p)] = False
+
             fieldlookups = _resolve_fieldlookups(request, kwargs, **p.get_lookup_kwargs())
             items = None
             if fieldlookups is not None:
                 items = _get_permissible_items(request, p.perm, fieldlookups)
                 if items is None:
-                    p.permitted = False
                     continue
 
             if request.user.has_perms((p.perm, ), items):
-                p.permitted = True
+                local_perms[id(p)] = True
                 continue
 
-            p.permitted = False
-
-        res = perm.solve()
+        res = perm.solve(local_perms)
         if res:
             return res
 
