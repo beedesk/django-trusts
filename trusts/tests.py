@@ -169,14 +169,14 @@ class DecoratorsTest(TestCase):
 
         create_test_users(self)
 
+        self.request = HttpRequest()
+        setattr(self.request, 'user', self.user)
+        self.request.META['SERVER_NAME'] = 'beedesk.com'
+        self.request.META['SERVER_PORT'] = 80
+
     def test_permission_required(self):
         self.group = Group(name='Group A')
         self.group.save()
-
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-        request.META['SERVER_NAME'] = 'beedesk.com'
-        request.META['SERVER_PORT'] = 80
 
         # test a) has_perms() == False
         mock = Mock(return_value='Response')
@@ -188,7 +188,7 @@ class DecoratorsTest(TestCase):
             fieldlookups_kwargs={'pk': 'pk'},
             raise_exception=False
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertFalse(mock.called)
         self.assertTrue(response.status_code, 403)
@@ -208,10 +208,10 @@ class DecoratorsTest(TestCase):
             'auth.read_group',
             fieldlookups_kwargs={'pk': 'pk'}
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertTrue(mock.called)
-        mock.assert_called_with(request, pk=self.group.pk)
+        mock.assert_called_with(self.request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
         filter = has_perms.call_args[0][1]
@@ -223,11 +223,6 @@ class DecoratorsTest(TestCase):
         self.group = Group(name='Group B')
         self.group.save()
 
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-        request.META['SERVER_NAME'] = 'beedesk.com'
-        request.META['SERVER_PORT'] = 80
-
         # test a) has_perms() == False, single P used
         mock = Mock(return_value='Response')
         has_perms = Mock(return_value=False)
@@ -237,7 +232,7 @@ class DecoratorsTest(TestCase):
             P('auth.read_group', fieldlookups_kwargs={'pk': 'pk'}),
             raise_exception=False
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertFalse(mock.called)
         self.assertTrue(response.status_code, 403)
@@ -258,10 +253,10 @@ class DecoratorsTest(TestCase):
             P('auth.add_group', fieldlookups_kwargs={'pk': 'pk'}),
             raise_exception=False
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertTrue(mock.called)
-        mock.assert_called_with(request, pk=self.group.pk)
+        mock.assert_called_with(self.request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
         self.assertEqual(has_perms.call_args[0][0], ('auth.add_group',))
         filter = has_perms.call_args[0][1]

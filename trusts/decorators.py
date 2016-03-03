@@ -14,11 +14,9 @@ from trusts import utils
 
 
 class P(object):
-    def __init__(self, perm, **kwargs):
-        self.perm = perm
-        self.fieldlookups_kwargs = kwargs.get('fieldlookups_kwargs')
-        self.fieldlookups_getparams = kwargs.get('fieldlookups_getparams')
-        self.fieldlookups_postparams = kwargs.get('fieldlookups_postparams')
+    def __init__(self, perm, **fieldlookups):
+        self._perm = perm
+        self._fieldlookups = fieldlookups
         self._left_operand = None
         self._right_operand = None
         self._operator = None
@@ -52,13 +50,6 @@ class P(object):
 
         return 'P object'
 
-    def get_lookup_kwargs(self):
-        return {
-            'fieldlookups_kwargs': self.fieldlookups_kwargs,
-            'fieldlookups_getparams': self.fieldlookups_getparams,
-            'fieldlookups_postparams': self.fieldlookups_postparams,
-        }
-
     def get_leaves(self):
         leaves = []
         if not self._operator:
@@ -70,12 +61,17 @@ class P(object):
 
         return leaves
 
-    def solve(self, perms):
-        if not self._operator:
-            return perms[id(self)]
-        else:
+    def solve(self, fn):
+        if self._operator:
             # Parent node, return result operation
-            return self._operator(self._left_operand.solve(perms), self._right_operand.solve(perms))
+            if self._operator == and_:
+                return self._left_operand.solve(fn) and self._right_operand.solve(fn)
+            elif self._operator == or_:
+                return self._left_operand.solve(fn) or self._right_operand.solve(fn)
+            else:
+                raise TypeError('Unsupported Operator: ', self._operator)
+        else:
+            return fn(self._perm, **self._fieldlookups)
 
 
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
@@ -109,7 +105,7 @@ def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_
     return decorator
 
 
-def _collect_args(fieldlookups, args):
+def _collect_args(args, fieldlookups):
     results = {}
 
     if not fieldlookups:
@@ -124,11 +120,11 @@ def _collect_args(fieldlookups, args):
     return results
 
 
-def _get_permissible_items(request, permext, fieldlookups):
+def _get_permissible_items(perm, request, fieldlookups):
     if fieldlookups is None:
         return None
 
-    applabel, modelname, action, cond = utils.parse_perm_code(permext)
+    applabel, modelname, action, cond = utils.parse_perm_code(perm)
     try:
         ctype = ContentType.objects.get_by_natural_key(applabel, modelname)
 
@@ -137,19 +133,42 @@ def _get_permissible_items(request, permext, fieldlookups):
         raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % permext)
 
 
-def _resolve_fieldlookups(request, view_kwargs,
-        fieldlookups_kwargs, fieldlookups_getparams, fieldlookups_postparams):
+def _resolve_fieldlookups(request, kwargs, fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None):
     fieldlookups = None
     if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
         fieldlookups = {}
-        fieldlookups.update(_collect_args(fieldlookups_kwargs, view_kwargs))
-        fieldlookups.update(_collect_args(fieldlookups_getparams, request.GET))
-        fieldlookups.update(_collect_args(fieldlookups_postparams, request.POST))
+        fieldlookups.update(_collect_args(kwargs, fieldlookups_kwargs))
+        fieldlookups.update(_collect_args(request.GET, fieldlookups_getparams))
+        fieldlookups.update(_collect_args(request.POST, fieldlookups_postparams, ))
     return fieldlookups
 
 
-def permission_required(perm, raise_exception=True, login_url=None,
-        fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **kwargs):
+def _check(perm, request, kwargs, raise_exception, **fieldlookups):
+    if not isinstance(perm, (list, tuple)):
+        perms = (perm, )
+    else:
+        perms = perm
+
+    resolved_items = _resolve_fieldlookups(request, kwargs, **fieldlookups)
+
+    items = None
+    if fieldlookups is not None:
+        items = _get_permissible_items(perm, request, resolved_items)
+        if items is None:
+            if raise_exception:
+                raise Http404
+            return False
+
+    if request.user.has_perms(perms, items):
+        return True
+
+    # In case the 403 handler should be called raise the exception
+    if raise_exception:
+        raise PermissionDenied
+    return False
+
+
+def permission_required(perm, raise_exception=True, login_url=None, **fieldlookups):
     '''
     Decorator for views that checks whether a user has a particular permission
     enabled, redirecting to the log-in page if necessary.
@@ -159,66 +178,13 @@ def permission_required(perm, raise_exception=True, login_url=None,
     Adapted from `django/contrib/auth/decorator.py`
     '''
 
-    def check_perms(request, *args, **kwargs):
+    def _check_perms(request, *args, **kwargs):
+        def _wrapped_check(perm, **fieldlookups):
+            return _check(perm, request, kwargs, raise_exception, **fieldlookups)
+
         if isinstance(perm, P):
-            return check_by_p(request, *args, **kwargs)
+            return perm.solve(_wrapped_check)
 
-        return check_by_name(request, *args, **kwargs)
+        return _check(perm, request, kwargs, raise_exception, **fieldlookups)
 
-    def check_by_name(request, *args, **kwargs):
-        if not isinstance(perm, (list, tuple)):
-            perms = (perm, )
-        else:
-            perms = perm
-
-        fieldlookups = _resolve_fieldlookups(request, kwargs,
-            fieldlookups_kwargs=fieldlookups_kwargs,
-            fieldlookups_getparams=fieldlookups_getparams,
-            fieldlookups_postparams=fieldlookups_postparams
-        )
-
-        items = None
-        if fieldlookups is not None:
-            items = _get_permissible_items(request, perm, fieldlookups)
-            if items is None:
-                if raise_exception:
-                    raise Http404
-                return False
-
-        if request.user.has_perms(perms, items):
-            return True
-
-        # In case the 403 handler should be called raise the exception
-        if raise_exception:
-            raise PermissionDenied
-        return False
-
-    def check_by_p(request, *args, **kwargs):
-        perms = perm.get_leaves()
-        local_perms = {}
-
-        for p in perms:
-            # Store permission state for later solving without changing P state
-            local_perms[id(p)] = False
-
-            fieldlookups = _resolve_fieldlookups(request, kwargs, **p.get_lookup_kwargs())
-            items = None
-            if fieldlookups is not None:
-                items = _get_permissible_items(request, p.perm, fieldlookups)
-                if items is None:
-                    continue
-
-            if request.user.has_perms((p.perm, ), items):
-                local_perms[id(p)] = True
-                continue
-
-        res = perm.solve(local_perms)
-        if res:
-            return res
-
-        # In case the 403 handler should be called raise the exception
-        if raise_exception:
-            raise PermissionDenied
-        return False
-
-    return request_passes_test(check_perms, login_url=login_url)
+    return request_passes_test(_check_perms, login_url=login_url)
