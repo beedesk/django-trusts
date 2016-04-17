@@ -18,3 +18,14 @@ A ``trust`` is a relationship whereby content access is permitted by the creator
 
 Read more: http://django-trusts.readthedocs.org/en/latest/
 
+Test
+----
+
+To run unit tests:
+
+```
+pip install virtualenv
+virtualenv venv/
+source venv/bin/activate
+python setup.py test
+```
