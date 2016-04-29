@@ -1,34 +1,29 @@
-import os
-import json
 import unittest
 
-from decimal import Decimal
-from urllib import urlencode
-from urlparse import urlparse
-from datetime import date, datetime, timedelta
-from mock import Mock
-
 from django.apps import apps
-from django.db import models, connection, IntegrityError
-from django.db.models import F
-from django.db.models.base import ModelBase
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.management import create_permissions
+from django.contrib.auth.models import Group, Permission, User
+from django.contrib.contenttypes.management import update_contenttypes
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.color import no_style
-from django.contrib.auth.models import User, Group, Permission
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.management import create_permissions
-from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.management import update_contenttypes
-from django.test import TestCase, TransactionTestCase
-from django.test.client import MULTIPART_CONTENT, Client
+from django.core.urlresolvers import reverse
+from django.db import IntegrityError, connection, models
+from django.db.models import F
+from django.db.models.base import ModelBase
 from django.http.request import HttpRequest
+from django.test import TestCase, TransactionTestCase, RequestFactory
+from django.test.client import MULTIPART_CONTENT
 
-from trusts.models import Trust, TrustManager, Content, Junction, \
-                          Role, RolePermission, TrustUserPermission
+from mock import Mock
+from trusts import views
 from trusts.backends import TrustModelBackend
 from trusts.decorators import permission_required
+from trusts.models import (Content, Junction, Role, RolePermission,
+                           Trust, TrustManager, TrustUserPermission)
 
 
 def create_test_users(test):
@@ -218,6 +213,44 @@ class DecoratorsTest(TestCase):
         self.assertIsNotNone(filter)
         self.assertEqual(filter.count(), 1)
         self.assertEqual(filter.first().pk, self.group.pk)
+
+
+class ViewsTest(TestCase):
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = get_user_model().objects.create_user('a', 'b', 'c')
+        self.assertTrue(self.client.login(username='a', password='c'))
+
+    def test_newteam(self):
+        request = self.factory.get('/teams/new/')
+        request.user = self.user
+        r = views.newteam(request)
+        self.assertContains(r, 'html')
+        request = self.factory.post('/teams/new/', dict(name='Test'))
+        request.user = self.user
+        r = views.newteam(request)
+        g = Group.objects.get()
+        self.assertIn(g, self.user.groups.all())
+
+    def test_team(self):
+        # forbid access to non members
+        g = Group.objects.create()
+        url = '/teams/%i/' % g.pk
+        request = self.factory.get(url)
+        request.user = self.user
+        r = views.team(request, pk=g.pk)
+        self.assertEqual(r.status_code, 403)
+        # view team members
+        self.user.groups.add(g)
+        r = views.team(request, pk=g.pk)
+        self.assertContains(r, 'html')
+        # add team member
+        u = get_user_model().objects.create(username='d')
+        request = self.factory.post(url, dict(user=u.pk))
+        request.user = self.user
+        r = views.team(request, pk=g.pk)
+        self.assertIn(g, u.groups.all())
 
 
 class RuntimeModel(object):
@@ -783,4 +816,3 @@ class RoleContentTestCase(RoleTestMixin, ContentModelMixin, TransactionTestCase)
 
 class RoleJunctionTestCase(RoleTestMixin, JunctionModelMixin, TransactionTestCase):
     pass
-
