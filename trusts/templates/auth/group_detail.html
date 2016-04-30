@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{{object}}</h1>
+<h1>Members</h1>
+<p>
+{% for u in object.user_set.all %}
+{{u}}<br>
+{% endfor %}
+</p>
+<form method=post>
+    Add member: {{view.adduserform.user}}
+    {% csrf_token %}
+    <input type=submit value=Add>
+</form>
+{% endblock %}
