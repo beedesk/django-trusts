@@ -202,7 +202,7 @@ The mapping is used to load the permissible object for permission check.
 K(), G(), O() Lookups
 +++++++++++++++++++++
 
-Alternatively, `fieldlookups_kwargs` can be expressed with K() lookup.
+Alternatively, `fieldlookups_kwargs` can be expressed with K() lookup::
 
    from trusts.decorators import permission_required, K, G, O
    from app.models import Xyz
@@ -246,7 +246,7 @@ P() Expressions
 +++++++++++++++
 
 Trusts' decorator supports P() expression, permitting the construction of compound permission using | (OR) and & (AND) operators;
-In particular, it is not otherwise possible to use OR in permission.
+In particular, it is not otherwise possible to use OR in permission::
 
    from trusts.decorators import permission_required, P, K, G, O
    from app.models import Xyz
