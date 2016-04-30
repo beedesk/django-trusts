@@ -10,18 +10,17 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.color import no_style
-from django.core.urlresolvers import reverse
 from django.db import IntegrityError, connection, models
 from django.db.models import F
 from django.db.models.base import ModelBase
 from django.http.request import HttpRequest
-from django.test import TestCase, TransactionTestCase, RequestFactory
+from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.test.client import MULTIPART_CONTENT
 
 from mock import Mock
 from trusts import views
 from trusts.backends import TrustModelBackend
-from trusts.decorators import permission_required
+from trusts.decorators import G, K, O, P, permission_required
 from trusts.models import (Content, Junction, Role, RolePermission,
                            Trust, TrustManager, TrustUserPermission)
 
@@ -164,14 +163,14 @@ class DecoratorsTest(TestCase):
 
         create_test_users(self)
 
+        self.request = HttpRequest()
+        setattr(self.request, 'user', self.user)
+        self.request.META['SERVER_NAME'] = 'beedesk.com'
+        self.request.META['SERVER_PORT'] = 80
+
     def test_permission_required(self):
         self.group = Group(name='Group A')
         self.group.save()
-
-        request = HttpRequest()
-        setattr(request, 'user', self.user)
-        request.META['SERVER_NAME'] = 'beedesk.com'
-        request.META['SERVER_PORT'] = 80
 
         # test a) has_perms() == False
         mock = Mock(return_value='Response')
@@ -183,18 +182,18 @@ class DecoratorsTest(TestCase):
             fieldlookups_kwargs={'pk': 'pk'},
             raise_exception=False
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertFalse(mock.called)
         self.assertTrue(response.status_code, 403)
         self.assertTrue(has_perms.called)
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
-        # test b) has_perms() == False
+        # test b) has_perms() == True
         mock = Mock(return_value='Response')
         has_perms = Mock(return_value=True)
         self.user.has_perms = has_perms
@@ -203,16 +202,61 @@ class DecoratorsTest(TestCase):
             'auth.read_group',
             fieldlookups_kwargs={'pk': 'pk'}
         )(mock)
-        response = decorated_func(request, pk=self.group.pk)
+        response = decorated_func(self.request, pk=self.group.pk)
 
         self.assertTrue(mock.called)
-        mock.assert_called_with(request, pk=self.group.pk)
+        mock.assert_called_with(self.request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
+
+    def test_permission_required_P(self):
+        self.group = Group(name='Group B')
+        self.group.save()
+
+        # test a) has_perms() == False, single P used
+        mock = Mock(return_value='Response')
+        has_perms = Mock(return_value=False)
+        self.user.has_perms = has_perms
+
+        decorated_func = permission_required(
+            P('auth.read_group', fieldlookups_kwargs={'pk': 'pk'}),
+            raise_exception=False
+        )(mock)
+        response = decorated_func(self.request, pk=self.group.pk)
+
+        self.assertFalse(mock.called)
+        self.assertTrue(response.status_code, 403)
+        self.assertTrue(has_perms.called)
+        self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
+
+        # test d) has_perms() == True, P & P used
+        mock = Mock(return_value='Response')
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+
+        decorated_func = permission_required(
+            P('auth.read_group', fieldlookups_kwargs={'pk': 'pk'}) &
+            P('auth.add_group', fieldlookups_kwargs={'pk': 'pk'}),
+            raise_exception=False
+        )(mock)
+        response = decorated_func(self.request, pk=self.group.pk)
+
+        self.assertTrue(mock.called)
+        mock.assert_called_with(self.request, pk=self.group.pk)
+        self.assertEqual(response, 'Response')
+        self.assertEqual(has_perms.call_args[0][0], ('auth.add_group',))
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
 
 class ViewsTest(TestCase):
@@ -816,3 +860,242 @@ class RoleContentTestCase(RoleTestMixin, ContentModelMixin, TransactionTestCase)
 
 class RoleJunctionTestCase(RoleTestMixin, JunctionModelMixin, TransactionTestCase):
     pass
+
+
+class DecoratorExpressionTest(ContentModelMixin, TestCase):
+
+    def setUp(self):
+        super(DecoratorExpressionTest, self).setUp()
+
+        self.trust1 = Trust(settlor=self.user, trust=Trust.objects.get_root())
+        self.trust1.save()
+
+        self.trust2 = Trust(settlor=self.user1, trust=Trust.objects.get_root())
+        self.trust2.save()
+
+        self.content1 = self.create_content(self.trust1)
+        self.content2 = self.create_content(self.trust2)
+
+        tup = TrustUserPermission(
+            trust=self.trust1, entity=self.user, permission=self.perm_change)
+        tup.save()
+
+        tup = TrustUserPermission(
+            trust=self.trust1, entity=self.user, permission=self.perm_delete)
+        tup.save()
+
+        tup = TrustUserPermission(
+            trust=self.trust2, entity=self.user, permission=self.perm_change)
+        tup.save()
+
+        reload_test_users(self)
+
+        request = HttpRequest()
+        setattr(request, 'user', self.user)
+        request.META['SERVER_NAME'] = 'beedesk.com'
+        request.META['SERVER_PORT'] = 80
+        self.request = request
+
+    def test_P(self):
+        p = P(self.get_perm_code(self.perm_change),
+              fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertTrue(mock.called)
+
+        p = P(self.get_perm_code(self.perm_delete),
+              fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertFalse(mock.called)
+
+    def test_P_K(self):
+        p = P(self.get_perm_code(self.perm_change), pk=K('pk'))
+        has_perms = Mock(return_value=False)
+        self.user.has_perms = has_perms
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
+
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertEqual(obj.first().pk, self.content2.pk)
+
+    def test_P_G(self):
+        p = P(self.get_perm_code(self.perm_change), pk=G('content'))
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        self.request.GET = {'content': self.content1.pk}
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
+
+    def test_P_O(self):
+        p = P(self.get_perm_code(self.perm_change), pk=O('content'))
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        self.request.POST = {'content': self.content1.pk}
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
+
+    def test_P_and(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) & \
+            P(self.get_perm_code(self.perm_delete),
+              fieldlookups_kwargs={'pk': 'pk'})
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertFalse(mock.called)
+
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) & \
+            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+    def test_P_or(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            P(self.get_perm_code(self.perm_delete),
+              fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertTrue(mock.called)
+
+        p = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) | \
+            P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+    def test_P_complex(self):
+        p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) | \
+            (P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'}) &
+             P('admin.change_all'))
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertTrue(mock.called)
+
+        p = (P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) |
+             P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})) & \
+            P('admin.change_all')
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content2.pk)
+        self.assertFalse(mock.called)
+
+        p1 = P(self.get_perm_code(self.perm_change),
+               fieldlookups_kwargs={'pk': 'pk'})
+        p2 = P(self.get_perm_code(self.perm_delete),
+               fieldlookups_kwargs={'pk': 'pk'})
+        p3 = P('auth.falseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        p4 = P('auth.falsefalseperm_group', fieldlookups_kwargs={'pk': 'pk'})
+        mock = Mock(return_value='Response')
+        permission_required(p1, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p2, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p3, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+        mock = Mock(return_value='Response')
+        permission_required(p4, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+        p = (p1 | p3) & (p2 | p4)
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        p = (p1 & p3) | (p2 & p4)
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+
+        p = (p1 & p2) | (p3 & p4)
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)
+
+        p = (p1 & p3) | (p2 & p4) | p1
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(
+            mock)(self.request, pk=self.content1.pk)
+        self.assertTrue(mock.called)

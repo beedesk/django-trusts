@@ -184,7 +184,7 @@ To check permission, simply use Django builtin API::
 Decorators
 ~~~~~~~~~~
 
-Trusts provides a decorator that check permission on object level. (the builtin one only verify permission at model level)::
+Trusts provides a decorator that check permission on object level. (in contrast to builtin one only verify permission at model level)::
 
    from trusts.decorators import permission_required
    from app.models import Xyz
@@ -194,14 +194,33 @@ Trusts provides a decorator that check permission on object level. (the builtin 
      # ...
      pass
 
-   @permission_required('app.change_xyz', fieldlookups_kwargs={'pk': 'xyz_id'})
-   @permission_required('app.read_project', fieldlookups_kwargs={'pk': 'project_id'})
-   def move_xyz_to_project_view(request, xyz_id, project_id):
+The argument `fieldlookups_kwargs` specifies the mapping between permissible object's field and view's arguments list.
+
+The mapping is used to load the permissible object for permission check.
+
+
+K(), G(), O() Lookups
++++++++++++++++++++++
+
+Alternatively, `fieldlookups_kwargs` can be expressed with K() lookup::
+
+   from trusts.decorators import permission_required, K, G, O
+   from app.models import Xyz
+
+   @permission_required('app.change_xyz', pk=K('xyz_id'))
+   def edit_xyz_view(request, xyz_id):
      # ...
      pass
 
+Similar to K() lookup, G() and O() can also be used.
+
+G() lookup maps permissible object's field and request's GET dict.
+
+G() lookup maps permissible object's field and request's POST dict.
+
+
 Permission Conditions
-~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++
 
 In additional ``Group`` and ``Permission`` based check, object level permission condition can be used.
 
@@ -217,10 +236,26 @@ To check ``own`` permission, a colon and the condition name should be added afte
 
 Condition can also be used with decorator as follow::
 
-   @permission_required('app.change_receipt:own', fieldlookups_kwargs={'pk': 'pk'})
+   @permission_required('app.change_receipt:own', pk=K('pk'))
    def edit_receipt_view(request, pk):
      # ...
      pass
+
+
+P() Expressions
++++++++++++++++
+
+Trusts' decorator supports P() expression, permitting the construction of compound permission using | (OR) and & (AND) operators;
+In particular, it is not otherwise possible to use OR in permission::
+
+   from trusts.decorators import permission_required, P, K, G, O
+   from app.models import Xyz
+
+   @permission_required(P('app.change_project:own', pk=K('project_id')) | P('app.move_receipt', pk=O('receipt_id')))
+   def move_xyz_to_project_view(request, project_id):
+     # ...
+     pass
+
 
 Customization
 ~~~~~~~~~~~~~
