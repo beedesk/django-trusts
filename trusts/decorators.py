@@ -74,6 +74,23 @@ class P(object):
             return fn(self._perm, **self._fieldlookups)
 
 
+class R(object):
+    def __init__(self, key):
+        self.key = key
+
+
+class K(R):
+    pass
+
+
+class G(R):
+    pass
+
+
+class O(R):
+    pass
+
+
 def request_passes_test(test_func, login_url=None, redirect_field_name=REDIRECT_FIELD_NAME, *args, **kwargs):
     '''
     Decorator for views that checks that the user passes the given test,
@@ -133,14 +150,25 @@ def _get_permissible_items(perm, request, fieldlookups):
         raise ValueError('Permission code must be of the form "app_label.action_modelname". Actual: %s' % permext)
 
 
-def _resolve_fieldlookups(request, kwargs, fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None):
-    fieldlookups = None
-    if fieldlookups_kwargs is not None or fieldlookups_getparams is not None or fieldlookups_postparams is not None:
-        fieldlookups = {}
-        fieldlookups.update(_collect_args(kwargs, fieldlookups_kwargs))
-        fieldlookups.update(_collect_args(request.GET, fieldlookups_getparams))
-        fieldlookups.update(_collect_args(request.POST, fieldlookups_postparams, ))
-    return fieldlookups
+def _resolve_fieldlookups(request, kwargs, fieldlookups_kwargs=None, fieldlookups_getparams=None, fieldlookups_postparams=None, **fieldlookups):
+    resolved_fields = {}
+
+    resolved_fields.update(_collect_args(kwargs, fieldlookups_kwargs))
+    resolved_fields.update(_collect_args(request.GET, fieldlookups_getparams))
+    resolved_fields.update(_collect_args(request.POST, fieldlookups_postparams, ))
+
+    for field, lookup in fieldlookups.items():
+        if isinstance(lookup, K):
+            source = kwargs
+        elif isinstance(lookup, G):
+            source = request.GET
+        elif isinstance(lookup, O):
+            source = request.POST
+        else:
+            continue
+        resolved_fields[field] = source[lookup.key] if lookup.key in source else None
+
+    return resolved_fields or None
 
 
 def _check(perm, request, kwargs, raise_exception, **fieldlookups):

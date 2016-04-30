@@ -28,7 +28,7 @@ from django.http.request import HttpRequest
 from trusts.models import Trust, TrustManager, Content, Junction, \
                           Role, RolePermission, TrustUserPermission
 from trusts.backends import TrustModelBackend
-from trusts.decorators import permission_required, P
+from trusts.decorators import permission_required, P, K, G, O
 
 
 def create_test_users(test):
@@ -194,10 +194,10 @@ class DecoratorsTest(TestCase):
         self.assertTrue(response.status_code, 403)
         self.assertTrue(has_perms.called)
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
         # test b) has_perms() == True
         mock = Mock(return_value='Response')
@@ -214,10 +214,10 @@ class DecoratorsTest(TestCase):
         mock.assert_called_with(self.request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
     def test_permission_required_P(self):
         self.group = Group(name='Group B')
@@ -238,10 +238,10 @@ class DecoratorsTest(TestCase):
         self.assertTrue(response.status_code, 403)
         self.assertTrue(has_perms.called)
         self.assertEqual(has_perms.call_args[0][0], ('auth.read_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
         # test d) has_perms() == True, P & P used
         mock = Mock(return_value='Response')
@@ -259,10 +259,10 @@ class DecoratorsTest(TestCase):
         mock.assert_called_with(self.request, pk=self.group.pk)
         self.assertEqual(response, 'Response')
         self.assertEqual(has_perms.call_args[0][0], ('auth.add_group',))
-        filter = has_perms.call_args[0][1]
-        self.assertIsNotNone(filter)
-        self.assertEqual(filter.count(), 1)
-        self.assertEqual(filter.first().pk, self.group.pk)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.group.pk)
 
 
 class RuntimeModel(object):
@@ -830,9 +830,9 @@ class RoleJunctionTestCase(RoleTestMixin, JunctionModelMixin, TransactionTestCas
     pass
 
 
-class PTest(ContentModelMixin, TestCase):
+class DecoratorExpressionTest(ContentModelMixin, TestCase):
     def setUp(self):
-        super(PTest, self).setUp()
+        super(DecoratorExpressionTest, self).setUp()
 
         self.trust1 = Trust(settlor=self.user, trust=Trust.objects.get_root())
         self.trust1.save()
@@ -878,6 +878,56 @@ class PTest(ContentModelMixin, TestCase):
         mock = Mock(return_value='Response')
         permission_required(p, raise_exception=False)(mock)(self.request, pk=self.content2.pk)
         self.assertFalse(mock.called)
+
+    def test_P_K(self):
+        p = P(self.get_perm_code(self.perm_change), pk=K('pk'))
+        has_perms = Mock(return_value=False)
+        self.user.has_perms = has_perms
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request, pk=self.content1.pk)
+        self.assertFalse(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
+
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request, pk=self.content2.pk)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertEqual(obj.first().pk, self.content2.pk)
+
+    def test_P_G(self):
+        p = P(self.get_perm_code(self.perm_change), pk=G('content'))
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        self.request.GET = {'content': self.content1.pk}
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
+
+    def test_P_O(self):
+        p = P(self.get_perm_code(self.perm_change), pk=O('content'))
+        has_perms = Mock(return_value=True)
+        self.user.has_perms = has_perms
+        self.request.POST = {'content': self.content1.pk}
+        mock = Mock(return_value='Response')
+        permission_required(p, raise_exception=False)(mock)(self.request)
+        self.assertTrue(mock.called)
+        self.assertTrue(has_perms.called)
+        obj = has_perms.call_args[0][1]
+        self.assertIsNotNone(obj)
+        self.assertEqual(obj.count(), 1)
+        self.assertEqual(obj.first().pk, self.content1.pk)
 
     def test_P_and(self):
         p = P(self.get_perm_code(self.perm_change), fieldlookups_kwargs={'pk': 'pk'}) & \
