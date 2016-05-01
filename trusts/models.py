@@ -91,9 +91,33 @@ class ReadonlyFieldsMixin(object):
                         raise ValidationError('Field "%s" is readonly.' % 'trust')
 
 
+class ContentManager(models.Manager):
+    class ContentQuerySetMixin(object):
+        def permitted(self, perm, user):
+            permission = self._manager.get_permission(perm)
+
+            return self.filter(
+                Q(trust__trustees__entity=user, trust__trustees__permission=permission) |
+                Q(trust__groups__user=user, trust__groups__permissions=permission)
+            ).distinct()
+
+    def get_queryset(self):
+        class ContentQuerySet(self.model.QuerySet, ContentManager.ContentQuerySetMixin):
+            pass
+        cqs = ContentQuerySet(self.model, using=self._db)
+        cqs._manager = self
+        return cqs
+
+    def get_permission(self, perm):
+        # @TODO - Fixme - It broke PERMISSION_MODEL_NAME option
+        from django.contrib.auth.models import Permission
+        return Permission.objects.get_by_natural_key(perm, self.model._meta.app_label.lower(), self.model._meta.model_name)
+
+
 class Content(ReadonlyFieldsMixin, models.Model):
     trust = models.ForeignKey('trusts.Trust', related_name='%(app_label)s_%(class)s_content',
                 default=ROOT_PK, null=False, blank=False)
+    objects = ContentManager()
     _contents = {}
     _conditions = {}
 
@@ -101,6 +125,17 @@ class Content(ReadonlyFieldsMixin, models.Model):
         abstract = True
         default_permissions = ('add', 'change', 'delete', 'read',)
         permission_conditions = ()
+
+    class QuerySet(models.QuerySet):
+        pass
+
+    def grant(self, perm, user):
+        permission = self.__class__.objects.get_permission(perm)
+
+        TrustUserPermission.objects.get_or_create(
+            trust=self.trust, entity=user,
+            permission=permission
+        )
 
     @staticmethod
     def register_permission_condition(klass, cond_code, func):
