@@ -38,6 +38,12 @@ class TrustManager(models.Manager):
             trust.save()
             return trust, True
 
+    '''
+        @TODO -- Implement me. It is a dummy method. Need a real implemtation
+    '''
+    def get_or_create_content_default(self, settlor, content, defaults={}, **kwargs):
+        return self.get_or_create_settlor_default(settlor, defaults={}, **kwargs)
+
     def get_root(self):
         return self.get(pk=ROOT_PK)
 
@@ -227,6 +233,7 @@ class Role(models.Model):
 
     class Meta:
         pass
+
 
 class RolePermission(models.Model):
     role = models.ForeignKey('trusts.Role', related_name='rolepermissions', null=False, blank=False)
