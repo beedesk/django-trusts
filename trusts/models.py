@@ -33,7 +33,7 @@ class TrustManager(models.Manager):
         except Trust.DoesNotExist:
             params = {k: v for k, v in kwargs.items() if '__' not in k}
             params.update(defaults)
-            params.update({'title': '', 'trust_id': ROOT_PK})
+            params.update({'title': '', 'trust_id': ROOT_PK, 'settlor': settlor})
             trust = self.model(**params)
             trust.save()
             return trust, True
