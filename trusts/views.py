@@ -14,7 +14,7 @@ class SelectUserForm(forms.Form):
 class NewTeamView(CreateView):
     'Create new team'
     model = Group
-    fields = 'name',
+    fields = ('name',)
 
     def get_success_url(self):
         return '/'
