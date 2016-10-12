@@ -39,6 +39,14 @@ class Migration(migrations.Migration):
             bases=(trusts.models.ReadonlyFieldsMixin, models.Model),
         ),
         migrations.CreateModel(
+            name='TrustGroup',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('group', models.ForeignKey(related_name='trustgroups', to=GROUP_MODEL_NAME)),
+                ('trust', models.ForeignKey(related_name='trustgroups', to='trusts.Trust')),
+            ],
+        ),
+        migrations.CreateModel(
             name='TrustUserPermission',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, verbose_name='ID', serialize=False)),
@@ -72,6 +80,10 @@ class Migration(migrations.Migration):
         migrations.AlterUniqueTogether(
             name='trust',
             unique_together=set([('settlor', 'title')]),
+        ),
+        migrations.AlterUniqueTogether(
+            name='trustgroup',
+            unique_together=set([('trust', 'group')]),
         ),
         migrations.AlterUniqueTogether(
             name='rolepermission',

@@ -19,7 +19,7 @@ options.DEFAULT_NAMES += ('roles', 'permission_conditions',
     )
 
 class TrustManager(models.Manager):
-    def get_or_create_settlor_default(self, settlor, defaults={}, **kwargs):
+    def get_or_create_settlor_default(self, settlor, defaults=None, **kwargs):
         if 'trust' in kwargs:
             raise TypeError('"%s" are invalid keyword arguments' % 'trust')
         if settlor is None:
@@ -28,21 +28,20 @@ class TrustManager(models.Manager):
             # @TODO -- Handle anonymous settings
             raise ValueError('Anonymous is not yet supported.')
 
+        if defaults is None:
+            defaults = {}
+
+        title = settlor.username if 'username' in dir(settlor) else ''
         try:
-            return self.get(settlor=settlor, title='', **kwargs), False
+            return self.get(settlor=settlor, title=title, **kwargs), False
         except Trust.DoesNotExist:
             params = {k: v for k, v in kwargs.items() if '__' not in k}
+            params.update({'title': title})
             params.update(defaults)
-            params.update({'title': '', 'trust_id': ROOT_PK, 'settlor': settlor})
+            params.update({'settlor': settlor})
             trust = self.model(**params)
             trust.save()
             return trust, True
-
-    '''
-        @TODO -- Implement me. It is a dummy method. Need a real implemtation
-    '''
-    def get_or_create_content_default(self, settlor, content, defaults={}, **kwargs):
-        return self.get_or_create_settlor_default(settlor, defaults={}, **kwargs)
 
     def get_root(self):
         return self.get(pk=ROOT_PK)
@@ -69,11 +68,29 @@ class TrustManager(models.Manager):
 
         return self.none()
 
-    def filter_by_user_perm(self, user, **kwargs):
+    def filter_by_user_content_perm(self, user, content, perm_name, exclude_root=True, **kwargs):
         if 'group__user' in kwargs:
             raise TypeError('"%s" are invalid keyword arguments' % 'group__user')
 
-        return self.filter(Q(groups__user=user) | Q(trustees__entity=user), **kwargs)
+        if Content.is_content_model(content):
+            fieldlookup = Content.get_content_fieldlookup(content)
+            if fieldlookup is None:
+                fieldlookup = '%s_content' % utils.get_short_model_name_lower(content).replace('.', '_')
+
+            permission = content.objects.get_permission(perm_name)
+
+            qs = self.filter(
+                Q(trust__trustees__entity=user, trust__trustees__permission=permission) |
+                Q(trust__groups__user=user, trust__groups__permissions=permission) |
+                Q(trust__settlor=user)
+            )
+
+            if exclude_root and ROOT_PK is not None:
+                qs = qs.exclude(id=ROOT_PK)
+
+            return qs.distinct()
+
+        return self.none()
 
 
 class ReadonlyFieldsMixin(object):
@@ -200,6 +217,7 @@ class Trust(Content):
     title = models.CharField(max_length=40, null=False, blank=False, verbose_name=_('title'))
     settlor = models.ForeignKey(ENTITY_MODEL_NAME, default=DEFAULT_SETTLOR, null=ALLOW_NULL_SETTLOR, blank=False)
     groups = models.ManyToManyField(GROUP_MODEL_NAME, related_name='trusts',
+                through='trusts.TrustGroup',
                 verbose_name=_('groups'),
                 help_text=_('The groups this trust grants permissions to. A user will'
                             'get all permissions granted to each of his/her group.'),
@@ -211,12 +229,23 @@ class Trust(Content):
     class Meta:
         unique_together = ('settlor', 'title')
         default_permissions = ('add', 'change', 'delete', 'read',)
-        permission_conditions = (('own', lambda u, p, o: u == o.settlor), )
+        permission_conditions = (('own', lambda u, p, o: u == o.settlor),)
 
     def __str__(self):
-        settlor_str = ' of %s' % str(self.settlor) if self.settlor is not None else ''
-        return 'Trust[%s]: "%s"' % (self.id, self.title)
+        settlor_str = self.title
+
+        if settlor_str is not None:
+             str(self.settlor)
+        return settlor_str
 Content.register_content(Trust)
+
+
+class TrustGroup(models.Model):
+    trust = models.ForeignKey('trusts.Trust', related_name='trustgroups', null=False, blank=False)
+    group = models.ForeignKey(GROUP_MODEL_NAME, related_name='trustgroups', null=False, blank=False)
+
+    class Meta:
+        unique_together = ('trust', 'group')
 
 
 class Role(models.Model):

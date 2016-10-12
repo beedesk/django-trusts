@@ -22,7 +22,7 @@ from trusts import views
 from trusts.backends import TrustModelBackend
 from trusts.decorators import G, K, O, P, permission_required
 from trusts.models import (Content, Junction, Role, RolePermission,
-                           Trust, TrustManager, TrustUserPermission)
+                           Trust, TrustGroup, TrustManager, TrustUserPermission)
 
 
 def create_test_users(test):
@@ -105,7 +105,7 @@ class TrustTest(TestCase):
             codename='%s_%s' % ('read', ct.model)
         ))
 
-    def test_filter_by_user_perm(self):
+    def filter_by_user_content_perm(self):
         self.trust1, created = Trust.objects.get_or_create_settlor_default(self.user)
 
         self.trust2 = Trust(settlor=self.user, title='Title 0A', trust=Trust.objects.get_root())
@@ -127,12 +127,12 @@ class TrustTest(TestCase):
         self.group.save()
         self.user.groups.add(self.group)
 
-        self.trust5.groups.add(self.group)
+        TrustGroup(trust=self.trust5, group=self.group).save()
 
         self.trust6 = Trust(settlor=self.user1, title='Title 1C', trust=Trust.objects.get_root())
         self.trust6.save()
 
-        trusts = Trust.objects.filter_by_user_perm(self.user)
+        trusts = Trust.objects.filter_by_user_content_perm(self.user)
         trust_pks = [t.pk for t in trusts]
         self.assertEqual(trusts.count(), 3)
         self.assertTrue(self.trust2.id in trust_pks)
@@ -536,7 +536,7 @@ class TrustContentTestMixin(ContentModel):
 
         reload_test_users(self)
 
-        self.trust.groups.add(self.group)
+        TrustGroup(trust=self.trust, group=self.group).save()
 
         had = self.user.has_perm(self.get_perm_code(self.perm_change), self.content)
         self.assertTrue(had)
@@ -665,7 +665,7 @@ class RoleTestMixin(object):
         self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_read)))
 
         self.group.user_set.add(self.user)
-        self.trust.groups.add(self.group)
+        TrustGroup(trust=self.trust, group=self.group).save()
         Role.objects.get(name='public').groups.add(self.group)
 
         self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
@@ -689,7 +689,7 @@ class RoleTestMixin(object):
         self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
         self.assertFalse(self.user.has_perm(self.get_perm_code(self.perm_change), self.content1))
 
-        trust3.groups.add(self.group)
+        TrustGroup(trust=trust3, group=self.group).save()
 
         reload_test_users(self)
         self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), content3))
@@ -724,7 +724,7 @@ class RoleTestMixin(object):
         group3 = Group(name='write group')
         group3.save()
         Role.objects.get(name='write').groups.add(group3)
-        self.trust.groups.add(group3)
+        TrustGroup(trust=self.trust, group=group3).save()
 
         reload_test_users(self)
         self.assertTrue(self.user.has_perm(self.get_perm_code(self.perm_read), self.content1))
